@@ -1,0 +1,71 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: agent-combined-svc-plus
+  labels:
+    cloud.googleapis.com/location: asia-northeast1
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/startup-cpu-boost: 'true'
+        autoscaling.knative.dev/maxScale: '10'
+        autoscaling.knative.dev/minScale: '0'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: 266500572462-compute@developer.gserviceaccount.com
+      containers:
+      # --- Container 1: Xray XHTTP (Ingress) ---
+      # Handles public HTTPS traffic on port 443 (mapped to 8080)
+      - name: xray-xhttp
+        image: ghcr.io/xtls/xray-core:26.2.6
+        command: ["xray", "run", "-config", "/usr/local/etc/xray/config.json"]
+        ports:
+        - name: h2c
+          containerPort: 8080
+        volumeMounts:
+        - name: xray-config-vol
+          mountPath: /usr/local/etc/xray
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+
+      # --- Container 2: Agent Sidecar ---
+      # Manages configuration and communicates with controller
+      - name: agent-sidecar
+        image: asia-northeast1-docker.pkg.dev/xzerolab-480008/cloud-run-source-deploy/agent.svc.plus/agent-svc-plus:latest
+        env:
+        - name: INTERNAL_SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: internal-service-token
+              key: latest
+        # Define GCS mount path env var if needed by app logic, though -config flag is used
+        - name: OPENCLAW_STATE_DIR
+          value: "/data" 
+        volumeMounts:
+        - name: agent-config-vol
+          mountPath: /etc/agent
+        - name: xray-config-vol
+          mountPath: /usr/local/etc/xray
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+
+      volumes:
+      - name: xray-config-vol
+        emptyDir:
+          medium: Memory
+      - name: agent-config-vol
+        csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucket: xzerolab-agent-config-asia # Check your bucket name
+            mountOptions: "implicit-dirs"
