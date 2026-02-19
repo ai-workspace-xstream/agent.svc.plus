@@ -31,13 +31,16 @@ export default {
     const nodeID = url.searchParams.get("node") || "default";
     const container = env.AGENT_RUNTIME.getByName(nodeID);
 
+    // ── Worker-level health (no container needed) ──
     if (url.pathname === "/healthz") {
       return json({
         ok: true,
-        service: "agent-svc-plus-container-control-plane",
+        service: "hk-xhttp-svc-plus",
+        worker: true,
       });
     }
 
+    // ── Container health/debug endpoints ──
     if (url.pathname === "/container/healthz") {
       return container.fetch("http://container/healthz");
     }
@@ -50,13 +53,12 @@ export default {
       return container.fetch("http://container/debug/processes");
     }
 
-    return json(
-      {
-        error: "not_found",
-        message:
-          "use /container/healthz, /container/readyz or /container/debug/processes",
-      },
-      404,
-    );
+    // ── Default: forward ALL other requests to container ──
+    // This replaces Caddy's reverse-proxy role.
+    // Xray XHTTP listens on /dev/shm/xray.sock inside the container;
+    // the health server on :8080 is the container's defaultPort.
+    // Requests to /split/* (XHTTP) will be handled by xray via the
+    // internal routing in the container.
+    return container.fetch(request);
   },
 };

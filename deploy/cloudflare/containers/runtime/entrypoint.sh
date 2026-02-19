@@ -1,10 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ──────────────────────────────────────────────────────────────────────────
+# Container Entrypoint: agent-svc-plus + xray (XHTTP) + xray (TCP)
+#
+# Runs three long-lived processes under tini:
+#   1. agent-healthz         — HTTP health/readiness check server
+#   2. xray (XHTTP)          — VLESS+XHTTP inbound on /dev/shm/xray.sock
+#   3. xray (TCP)            — VLESS+TCP+TLS inbound on port 1443
+#   4. agent-svc-plus        — agent control plane (config sync, heartbeat)
+#
+# Configurable environment variables:
+#   AGENT_ID              — agent.id           (fallback: DOMAIN)
+#   AGENT_CONTROLLER_URL  — agent.controllerUrl (fallback: CONTROLLER_URL)
+#   AGENT_API_TOKEN       — agent.apiToken      (fallback: INTERNAL_SERVICE_TOKEN)
+# ──────────────────────────────────────────────────────────────────────────
+
 AGENT_CONFIG_TEMPLATE="${AGENT_CONFIG_TEMPLATE:-/etc/agent/account-agent.container.yaml}"
 AGENT_CONFIG_PATH="${AGENT_CONFIG_PATH:-/etc/agent/account-agent.yaml}"
 XRAY_CONFIG_PATH="${XRAY_CONFIG_PATH:-/usr/local/etc/xray/config.json}"
+XRAY_TCP_CONFIG_PATH="${XRAY_TCP_CONFIG_PATH:-/usr/local/etc/xray/tcp-config.json}"
 XRAY_BOOTSTRAP_PATH="${XRAY_BOOTSTRAP_PATH:-/etc/agent/xray.bootstrap.json}"
+XRAY_TCP_BOOTSTRAP_PATH="${XRAY_TCP_BOOTSTRAP_PATH:-/etc/agent/xray-tcp.bootstrap.json}"
 XRAY_PID_FILE="${XRAY_PID_FILE:-/var/run/agent-svc-plus/xray.pid}"
 XRAY_TCP_PID_FILE="${XRAY_TCP_PID_FILE:-/var/run/agent-svc-plus/xray-tcp.pid}"
 AGENT_PID_FILE="${AGENT_PID_FILE:-/var/run/agent-svc-plus/agent.pid}"
@@ -17,6 +34,8 @@ AGENT_API_TOKEN="${AGENT_API_TOKEN:-${INTERNAL_SERVICE_TOKEN:-}}"
 mkdir -p /etc/agent /usr/local/etc/xray /usr/local/etc/xray/templates /var/run/agent-svc-plus
 rm -f "$XRAY_STOP_FILE"
 
+# ── Copy config templates if not yet rendered ──
+
 if [ ! -f "$AGENT_CONFIG_PATH" ]; then
   cp "$AGENT_CONFIG_TEMPLATE" "$AGENT_CONFIG_PATH"
 fi
@@ -24,6 +43,12 @@ fi
 if [ ! -s "$XRAY_CONFIG_PATH" ]; then
   cp "$XRAY_BOOTSTRAP_PATH" "$XRAY_CONFIG_PATH"
 fi
+
+if [ ! -s "$XRAY_TCP_CONFIG_PATH" ]; then
+  cp "$XRAY_TCP_BOOTSTRAP_PATH" "$XRAY_TCP_CONFIG_PATH"
+fi
+
+# ── Inject configurable variables into agent YAML ──
 
 update_yaml_value() {
   local key="$1"
@@ -44,45 +69,86 @@ if [ -n "${AGENT_API_TOKEN}" ]; then
   update_yaml_value "apiToken" "$AGENT_API_TOKEN" "$AGENT_CONFIG_PATH"
 fi
 
+# ── Xray restart loops ──
+# Each loop runs xray, watches for exit, and restarts unless stop file exists.
+# The agent triggers restarts via restart-xray.sh → kill PID → loop auto-restarts.
+
 xray_loop() {
+  local config_path="$1"
+  local pid_file="$2"
+  local label="$3"
+
   while true; do
-    /usr/local/bin/xray run -config "$XRAY_CONFIG_PATH" &
+    echo "[entrypoint] Starting xray ($label): $config_path"
+    /usr/local/bin/xray run -config "$config_path" &
     local xray_pid=$!
-    echo "$xray_pid" > "$XRAY_PID_FILE"
+    echo "$xray_pid" > "$pid_file"
     wait "$xray_pid" || true
 
     if [ -f "$XRAY_STOP_FILE" ]; then
+      echo "[entrypoint] xray ($label) stop requested, exiting loop"
       break
     fi
+    echo "[entrypoint] xray ($label) exited, restarting in 1s..."
     sleep 1
   done
 }
 
+# ── Start all processes ──
+
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║  agent-svc-plus Container Runtime                   ║"
+echo "╠══════════════════════════════════════════════════════╣"
+echo "║  Agent ID:      ${AGENT_ID:-<not set>}"
+echo "║  Controller:    ${AGENT_CONTROLLER_URL:-<not set>}"
+echo "║  Health Port:   ${HEALTH_PORT}"
+echo "║  XHTTP Config:  ${XRAY_CONFIG_PATH}"
+echo "║  TCP Config:    ${XRAY_TCP_CONFIG_PATH}"
+echo "╚══════════════════════════════════════════════════════╝"
+
+# 1. Health check server
 /usr/local/bin/agent-healthz -listen ":${HEALTH_PORT}" &
 HEALTH_PID=$!
 
-xray_loop &
+# 2. Xray XHTTP instance (listen on Unix socket, proxied by Worker)
+xray_loop "$XRAY_CONFIG_PATH" "$XRAY_PID_FILE" "xhttp" &
 XRAY_LOOP_PID=$!
 
+# 3. Xray TCP instance (listen on port 1443, direct TCP/TLS)
+xray_loop "$XRAY_TCP_CONFIG_PATH" "$XRAY_TCP_PID_FILE" "tcp" &
+XRAY_TCP_LOOP_PID=$!
+
+# 4. Agent control plane
 /usr/local/bin/agent-svc-plus -config "$AGENT_CONFIG_PATH" &
 AGENT_PID=$!
 echo "$AGENT_PID" > "$AGENT_PID_FILE"
 
+# ── Graceful shutdown ──
+
 shutdown() {
+  echo "[entrypoint] Shutting down..."
   touch "$XRAY_STOP_FILE"
 
+  # Stop xray instances
   if [ -s "$XRAY_PID_FILE" ]; then
     kill "$(cat "$XRAY_PID_FILE")" 2>/dev/null || true
   fi
+  if [ -s "$XRAY_TCP_PID_FILE" ]; then
+    kill "$(cat "$XRAY_TCP_PID_FILE")" 2>/dev/null || true
+  fi
+
+  # Stop agent and health server
   kill "$AGENT_PID" 2>/dev/null || true
   kill "$XRAY_LOOP_PID" 2>/dev/null || true
+  kill "$XRAY_TCP_LOOP_PID" 2>/dev/null || true
   kill "$HEALTH_PID" 2>/dev/null || true
 }
 
 trap shutdown SIGINT SIGTERM
 
+# Wait for any child to exit — if one dies, bring everything down
 set +e
-wait -n "$AGENT_PID" "$XRAY_LOOP_PID" "$HEALTH_PID"
+wait -n "$AGENT_PID" "$XRAY_LOOP_PID" "$XRAY_TCP_LOOP_PID" "$HEALTH_PID"
 EXIT_CODE=$?
 set -e
 

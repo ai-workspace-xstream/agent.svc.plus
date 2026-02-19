@@ -1,4 +1,4 @@
-name = "agent-svc-plus-containers"
+name = "hk-xhttp-svc-plus"
 main = "worker/src/index.js"
 compatibility_date = "2026-02-19"
 compatibility_flags = ["nodejs_compat"]

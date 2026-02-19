@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"flag"
 	"log"
+	"net"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"strconv"
 	"strings"
@@ -24,11 +28,30 @@ type statusPayload struct {
 }
 
 func main() {
-	listenAddr := envOrDefault("HEALTH_LISTEN_ADDR", ":8080")
+	listenAddr := flag.String("listen", envOrDefault("HEALTH_LISTEN_ADDR", ":8080"), "listen address")
+	flag.Parse()
+
 	xrayPIDFile := envOrDefault("XRAY_PID_FILE", "/var/run/agent-svc-plus/xray.pid")
+	xrayTCPPIDFile := envOrDefault("XRAY_TCP_PID_FILE", "/var/run/agent-svc-plus/xray-tcp.pid")
 	agentPIDFile := envOrDefault("AGENT_PID_FILE", "/var/run/agent-svc-plus/agent.pid")
+	xraySock := envOrDefault("XRAY_UNIX_SOCKET", "/dev/shm/xray.sock")
+
+	// Reverse proxy to xray XHTTP Unix socket (replaces Caddy reverse_proxy)
+	xrayProxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
+			req.URL.Scheme = "http"
+			req.URL.Host = "xray-unix"
+		},
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", xraySock)
+			},
+		},
+	}
 
 	mux := http.NewServeMux()
+
+	// Health (always OK)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":      true,
@@ -36,12 +59,11 @@ func main() {
 			"time":    time.Now().UTC().Format(time.RFC3339),
 		})
 	})
+
+	// Readiness (all processes)
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		processes := map[string]processStatus{
-			"xray":  readProcessStatus(xrayPIDFile),
-			"agent": readProcessStatus(agentPIDFile),
-		}
-		ready := processes["xray"].Running && processes["agent"].Running
+		processes := getProcesses(xrayPIDFile, xrayTCPPIDFile, agentPIDFile)
+		ready := (processes["xray"].Running || processes["xray-tcp"].Running) && processes["agent"].Running
 		code := http.StatusOK
 		if !ready {
 			code = http.StatusServiceUnavailable
@@ -52,21 +74,46 @@ func main() {
 			Processes: processes,
 		})
 	})
+
+	// Debug
 	mux.HandleFunc("/debug/processes", func(w http.ResponseWriter, _ *http.Request) {
-		processes := map[string]processStatus{
-			"xray":  readProcessStatus(xrayPIDFile),
-			"agent": readProcessStatus(agentPIDFile),
-		}
+		processes := getProcesses(xrayPIDFile, xrayTCPPIDFile, agentPIDFile)
 		writeJSON(w, http.StatusOK, statusPayload{
-			OK:        processes["xray"].Running && processes["agent"].Running,
+			OK:        (processes["xray"].Running || processes["xray-tcp"].Running) && processes["agent"].Running,
 			Time:      time.Now().UTC().Format(time.RFC3339),
 			Processes: processes,
 		})
 	})
 
-	log.Printf("health server listening on %s", listenAddr)
-	if err := http.ListenAndServe(listenAddr, mux); err != nil {
+	// XHTTP proxy: /split/* → xray Unix socket (replaces Caddy reverse_proxy)
+	mux.HandleFunc("/split/", func(w http.ResponseWriter, r *http.Request) {
+		xrayProxy.ServeHTTP(w, r)
+	})
+
+	// Default: return service info or proxy to xray
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Non-root paths: proxy to xray (XHTTP mode=auto may use various paths)
+		if r.URL.Path != "/" {
+			xrayProxy.ServeHTTP(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"service": "agent-svc-plus-runtime",
+			"node":    envOrDefault("AGENT_ID", "unknown"),
+		})
+	})
+
+	log.Printf("health+proxy server listening on %s (xray socket: %s)", *listenAddr, xraySock)
+	if err := http.ListenAndServe(*listenAddr, mux); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func getProcesses(xrayPID, xrayTCPPID, agentPID string) map[string]processStatus {
+	return map[string]processStatus{
+		"xray":     readProcessStatus(xrayPID),
+		"xray-tcp": readProcessStatus(xrayTCPPID),
+		"agent":    readProcessStatus(agentPID),
 	}
 }
 
