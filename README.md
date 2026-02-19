@@ -46,6 +46,65 @@ curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plu
   bash -s -- --node hk-xhttp.svc.plus
 ```
 
+## Cloudflare Workers Support
+
+This repo now includes an optional Cloudflare Workers edge proxy under
+`deploy/cloudflare/workers`.
+
+Supported endpoints:
+
+- `GET /healthz`
+- `GET /api/agent-server/v1/users`
+- `POST /api/agent-server/v1/status`
+
+Quick usage:
+
+```bash
+make cf-worker-install
+make cf-worker-dev
+# or deploy
+make cf-worker-deploy
+```
+
+Then point Agent to the Worker URL:
+
+```yaml
+agent:
+  controllerUrl: "https://<your-worker>.workers.dev"
+  apiToken: "edge-token-or-controller-token"
+```
+
+See `deploy/cloudflare/workers/README.md` for full setup and token strategy.
+
+## Cloudflare Containers / Cloud Run Runtime Mode
+
+To evaluate running both processes in one container:
+
+- `/usr/local/bin/xray run -config /usr/local/etc/xray/config.json`
+- `/usr/local/bin/agent-svc-plus -config /etc/agent/account-agent.yaml`
+
+Use `deploy/cloudflare/containers`:
+
+```bash
+make cf-containers-install
+make cf-containers-check
+# deploy Cloudflare Containers
+make cf-containers-deploy
+```
+
+This mode includes:
+
+- Shared runtime image (`Dockerfile`) for `xray + agent-svc-plus`
+- Cloudflare `wrangler` config for Containers
+- Cloud Run sample service spec for the same image
+- Configurable runtime variables:
+  - `AGENT_ID`
+  - `AGENT_CONTROLLER_URL`
+  - `AGENT_API_TOKEN` (secret)
+
+See `deploy/cloudflare/containers/README.md` for migration feasibility details
+and platform recommendation.
+
 ## Configuration
 
 The agent is configured via `/etc/systemd/system/agent.service` environment variables or a YAML config file.

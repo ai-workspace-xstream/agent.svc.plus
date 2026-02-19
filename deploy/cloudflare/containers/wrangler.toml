@@ -1,0 +1,25 @@
+name = "agent-svc-plus-containers"
+main = "worker/src/index.js"
+compatibility_date = "2026-02-19"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+AGENT_ID = "replace-with-agent-id"
+AGENT_CONTROLLER_URL = "https://replace-with-controller-url"
+
+[observability.logs]
+enabled = true
+
+[[durable_objects.bindings]]
+name = "AGENT_RUNTIME"
+class_name = "AgentRuntimeContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AgentRuntimeContainer"]
+
+[[containers]]
+class_name = "AgentRuntimeContainer"
+image = "./Dockerfile"
+max_instances = 3
+instance_type = "basic"
