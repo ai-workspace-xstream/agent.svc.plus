@@ -9,6 +9,8 @@ NC='\033[0m'
 
 echo -e "${GREEN}Starting Agent Service Plus Installation...${NC}"
 
+XRAY_TCP_USER="caddy"
+
 usage() {
     cat <<EOF
 Usage:
@@ -196,6 +198,37 @@ fi
 
 caddy version
 
+# Ensure caddy runtime user exists (required by xray-tcp.service + file ownership)
+ensure_caddy_user() {
+    if id -u caddy >/dev/null 2>&1; then
+        XRAY_TCP_USER="caddy"
+        return 0
+    fi
+
+    echo -e "${YELLOW}caddy user not found, creating system user/group...${NC}"
+    if ! getent group caddy >/dev/null 2>&1; then
+        groupadd --system caddy || true
+    fi
+
+    USER_SHELL="/usr/sbin/nologin"
+    if [ ! -x "$USER_SHELL" ]; then
+        USER_SHELL="/usr/bin/false"
+    fi
+
+    useradd --system --gid caddy --create-home --home-dir /var/lib/caddy --shell "$USER_SHELL" caddy || true
+    mkdir -p /var/lib/caddy
+
+    if id -u caddy >/dev/null 2>&1; then
+        chown -R caddy:caddy /var/lib/caddy || true
+        XRAY_TCP_USER="caddy"
+    else
+        XRAY_TCP_USER="root"
+        echo -e "${YELLOW}Failed to create caddy user. Falling back to root for xray-tcp service.${NC}"
+    fi
+}
+
+ensure_caddy_user
+
 # 4. Configuration Directories
 echo -e "${GREEN}[4/7] Setting up configuration directories...${NC}"
 mkdir -p /usr/local/etc/xray
@@ -296,7 +329,7 @@ fi
 sed -i -E "s|(\"certificateFile\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\\1${XRAY_CERT}\\2|g" /usr/local/etc/xray/templates/xray.tcp.template.json
 sed -i -E "s|(\"keyFile\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\\1${XRAY_KEY}\\2|g" /usr/local/etc/xray/templates/xray.tcp.template.json
 cp /usr/local/etc/xray/templates/xray.tcp.template.json /usr/local/etc/xray/tcp-config.json
-chown caddy:caddy /usr/local/etc/xray/tcp-config.json
+chown "${XRAY_TCP_USER}:${XRAY_TCP_USER}" /usr/local/etc/xray/tcp-config.json || true
 chmod 0644 /usr/local/etc/xray/tcp-config.json
 echo "Updated Xray TCP template/config to use: ${XRAY_CERT}"
 
@@ -326,8 +359,12 @@ echo -e "${GREEN}[7/7] Installing Systemd Services...${NC}"
 
 # Kill conflicting processes on 80/443
 echo "Checking for port conflicts..."
-fuser -k 80/tcp || true
-fuser -k 443/tcp || true
+if command -v fuser >/dev/null 2>&1; then
+    fuser -k 80/tcp || true
+    fuser -k 443/tcp || true
+else
+    echo -e "${YELLOW}fuser not found, skipping port pre-kill check.${NC}"
+fi
 # Stop legacy services if known
 systemctl stop nginx || true
 systemctl stop apache2 || true
@@ -363,6 +400,33 @@ Environment=XRAY_LOCATION_ASSET=/usr/local/share/xray/
 WantedBy=multi-user.target
 EOF
 
+# Caddy Service (fallback when distro package service is absent)
+if [ ! -f /etc/systemd/system/caddy.service ] && [ ! -f /lib/systemd/system/caddy.service ] && [ ! -f /usr/lib/systemd/system/caddy.service ]; then
+cat > /etc/systemd/system/caddy.service <<EOF
+[Unit]
+Description=Caddy
+Documentation=https://caddyserver.com/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${XRAY_TCP_USER}
+Group=${XRAY_TCP_USER}
+ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/bin/caddy reload --config /etc/caddy/Caddyfile
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
 # Xray TCP Service
 cat > /etc/systemd/system/xray-tcp.service <<EOF
 [Unit]
@@ -371,7 +435,7 @@ Documentation=https://github.com/xtls
 After=network.target nss-lookup.target
 
 [Service]
-User=caddy
+User=${XRAY_TCP_USER}
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
@@ -405,7 +469,7 @@ EOF
 systemctl daemon-reload
 systemctl enable xray
 systemctl enable xray-tcp
-systemctl enable caddy
+systemctl enable caddy || true
 systemctl enable agent-svc-plus
 systemctl restart xray || true
 systemctl restart caddy || true
