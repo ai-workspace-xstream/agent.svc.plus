@@ -11,6 +11,111 @@ echo -e "${GREEN}Starting Agent Service Plus Installation...${NC}"
 
 XRAY_TCP_USER="caddy"
 
+apply_low_latency_tuning() {
+    echo -e "${GREEN}[post] Applying low-latency kernel tuning (BBR/fq)...${NC}"
+
+    cat > /etc/sysctl.d/99-agent-lowlatency.conf <<'EOF'
+# Agent low-latency tuning (safe baseline)
+net.ipv4.tcp_congestion_control = bbr
+net.core.default_qdisc = fq
+net.ipv4.tcp_fastopen = 3
+
+# Queue/backlog
+net.core.somaxconn = 8192
+net.ipv4.tcp_max_syn_backlog = 8192
+net.core.netdev_max_backlog = 16384
+
+# Socket buffers
+net.core.rmem_max = 67108864
+net.core.wmem_max = 67108864
+net.ipv4.tcp_rmem = 4096 87380 33554432
+net.ipv4.tcp_wmem = 4096 65536 33554432
+
+# Better handling for path MTU edge-cases
+net.ipv4.tcp_mtu_probing = 1
+EOF
+
+    if ! sysctl --system >/tmp/agent-lowlatency-sysctl.log 2>&1; then
+        echo -e "${YELLOW}sysctl --system returned non-zero; checking applied values...${NC}"
+        tail -n 80 /tmp/agent-lowlatency-sysctl.log || true
+    fi
+
+    sysctl net.ipv4.tcp_congestion_control \
+        net.core.default_qdisc \
+        net.ipv4.tcp_fastopen \
+        net.core.somaxconn \
+        net.core.netdev_max_backlog \
+        net.ipv4.tcp_max_syn_backlog \
+        net.core.rmem_max \
+        net.core.wmem_max \
+        net.ipv4.tcp_mtu_probing || true
+}
+
+setup_fq_qdisc_service() {
+    echo -e "${GREEN}[post] Ensuring fq qdisc persistence service...${NC}"
+
+    cat > /usr/local/sbin/apply-fq-qdisc.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+while IFS= read -r dev; do
+    [ "$dev" = "lo" ] && continue
+    tc qdisc replace dev "$dev" root fq >/dev/null 2>&1 || true
+done < <(ip -o link show | awk -F': ' '{print $2}' | cut -d'@' -f1)
+EOF
+    chmod +x /usr/local/sbin/apply-fq-qdisc.sh
+
+    cat > /etc/systemd/system/apply-fq-qdisc.service <<'EOF'
+[Unit]
+Description=Apply fq qdisc for low-latency pacing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/apply-fq-qdisc.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable --now apply-fq-qdisc.service || true
+}
+
+ensure_ufw_ports() {
+    echo -e "${GREEN}[post] UFW check (80/443/1443)...${NC}"
+
+    if ! command -v ufw >/dev/null 2>&1; then
+        echo -e "${YELLOW}ufw not installed; skipping UFW checks.${NC}"
+        return 0
+    fi
+
+    UFW_STATE="$(ufw status | head -n 1 | awk '{print $2}')"
+    if [ "$UFW_STATE" != "active" ]; then
+        echo -e "${YELLOW}ufw is installed but not active; skipping automatic rule changes.${NC}"
+        return 0
+    fi
+
+    ufw allow 80/tcp >/dev/null 2>&1 || true
+    ufw allow 443/tcp >/dev/null 2>&1 || true
+    ufw allow 1443/tcp >/dev/null 2>&1 || true
+    ufw reload >/dev/null 2>&1 || true
+
+    echo "UFW active rules:"
+    ufw status | sed -n '1,40p' || true
+}
+
+post_install_network_optimization() {
+    ensure_ufw_ports
+    apply_low_latency_tuning
+    if command -v tc >/dev/null 2>&1; then
+        setup_fq_qdisc_service
+    else
+        echo -e "${YELLOW}tc command not found; skipping fq qdisc persistence setup.${NC}"
+    fi
+}
+
 usage() {
     cat <<EOF
 Usage:
@@ -256,6 +361,8 @@ go mod tidy
 go build -o /usr/local/bin/agent-svc-plus ./cmd/agent
 
 if [ "$UPGRADE_ONLY" = true ]; then
+    post_install_network_optimization
+
     echo -e "${GREEN}[upgrade-only] Restarting services to apply new binaries...${NC}"
     systemctl restart xray || true
     systemctl restart xray-tcp || true
@@ -489,6 +596,8 @@ if [ -n "$AUTH_URL" ] && [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
 else
     echo -e "${YELLOW}Skipping agent-svc-plus start: AUTH_URL or INTERNAL_SERVICE_TOKEN is missing.${NC}"
 fi
+
+post_install_network_optimization
 
 echo -e "${GREEN}Installation Complete!${NC}"
 echo -e "Config file: /etc/agent/account-agent.yaml"
