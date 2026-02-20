@@ -334,7 +334,7 @@ chmod 0644 /usr/local/etc/xray/tcp-config.json
 echo "Updated Xray TCP template/config to use: ${XRAY_CERT}"
 
 cat > /etc/caddy/Caddyfile <<EOF
-${DOMAIN}:443 {
+${DOMAIN} {
     ${TLS_CONFIG}
     
     @grpc {
