@@ -46,6 +46,23 @@ curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plu
   bash -s -- --node hk-xhttp.svc.plus
 ```
 
+### Co-Located PostgreSQL (optional)
+When deploying `postgresql.svc.plus` on the same node with stunnel TLS on `5443/tcp`,
+enable the extra firewall rule during install:
+
+```bash
+OPEN_STUNNEL_5443=true \
+curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+  bash -s -- --node jp-xhttp.svc.plus
+```
+
+Equivalent CLI flag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+  bash -s -- --node jp-xhttp.svc.plus --open-stunnel-5443
+```
+
 ## Cloudflare Workers Support
 
 This repo now includes an optional Cloudflare Workers edge proxy under

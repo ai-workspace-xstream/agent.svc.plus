@@ -56,7 +56,7 @@
 | :--- | :--- | :--- |
 | **OS** | Linux (Ubuntu/Debian recommended) | |
 | **Network** | Public IP + Domain | DNS must be pre-resolved |
-| **Ports** | 80, 443, 1443 | 80(ACME), 443(XHTTP), 1443(TCP) |
+| **Ports** | 80, 443, 1443 (+ optional 5443) | 80(ACME), 443(XHTTP), 1443(TCP), 5443(stunnel/PostgreSQL co-location) |
 | **Resources** | 1C/1G (Min), 2C/4G (Rec) | |
 
 ## Installation (One-Shell)

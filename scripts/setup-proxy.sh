@@ -10,6 +10,18 @@ NC='\033[0m'
 echo -e "${GREEN}Starting Agent Service Plus Installation...${NC}"
 
 XRAY_TCP_USER="caddy"
+OPEN_STUNNEL_5443="${OPEN_STUNNEL_5443:-false}"
+
+is_truthy() {
+    case "${1:-}" in
+        1|true|TRUE|yes|YES|y|Y|on|ON)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
 apply_low_latency_tuning() {
     echo -e "${GREEN}[post] Applying low-latency kernel tuning (BBR/fq)...${NC}"
@@ -84,7 +96,13 @@ EOF
 }
 
 ensure_ufw_ports() {
-    echo -e "${GREEN}[post] UFW check (80/443/1443)...${NC}"
+    local ufw_ports=(80 443 1443)
+
+    if is_truthy "$OPEN_STUNNEL_5443"; then
+        ufw_ports+=(5443)
+    fi
+
+    echo -e "${GREEN}[post] UFW check (${ufw_ports[*]})...${NC}"
 
     if ! command -v ufw >/dev/null 2>&1; then
         echo -e "${YELLOW}ufw not installed; skipping UFW checks.${NC}"
@@ -97,9 +115,9 @@ ensure_ufw_ports() {
         return 0
     fi
 
-    ufw allow 80/tcp >/dev/null 2>&1 || true
-    ufw allow 443/tcp >/dev/null 2>&1 || true
-    ufw allow 1443/tcp >/dev/null 2>&1 || true
+    for port in "${ufw_ports[@]}"; do
+        ufw allow "${port}/tcp" >/dev/null 2>&1 || true
+    done
     ufw reload >/dev/null 2>&1 || true
 
     echo "UFW active rules:"
@@ -119,11 +137,12 @@ post_install_network_optimization() {
 usage() {
     cat <<EOF
 Usage:
-  $0 [--upgrade-only|--upgrade] [--node <domain>] [--auth-url <url>] [--internal-service-token <token>]
+  $0 [--upgrade-only|--upgrade] [--node <domain>] [--auth-url <url>] [--internal-service-token <token>] [--open-stunnel-5443]
 
 Env (optional):
   AUTH_URL
   INTERNAL_SERVICE_TOKEN
+  OPEN_STUNNEL_5443=true   # when co-locating postgresql.svc.plus on same node
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
@@ -137,6 +156,11 @@ Examples:
   # Upgrade binaries only (no config overwrite)
   curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
     bash -s -- --upgrade-only
+
+  # Open 5443/tcp together with 80/443/1443 for stunnel(PostgreSQL) co-location
+  OPEN_STUNNEL_5443=true \\
+  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+    bash -s -- --node jp-xhttp.svc.plus
 EOF
 }
 
@@ -173,6 +197,14 @@ while [ "$#" -gt 0 ]; do
             ;;
         --upgrade-only|--upgrade)
             UPGRADE_ONLY=true
+            shift
+            ;;
+        --open-stunnel-5443)
+            OPEN_STUNNEL_5443=true
+            shift
+            ;;
+        --open-stunnel-5443=*)
+            OPEN_STUNNEL_5443="${1#*=}"
             shift
             ;;
         -h|--help)
@@ -213,6 +245,12 @@ if [ "$UPGRADE_ONLY" = true ]; then
 fi
 if [ -n "$AUTH_URL" ]; then
     echo -e "${GREEN}Using AUTH_URL: ${AUTH_URL}${NC}"
+fi
+if is_truthy "$OPEN_STUNNEL_5443"; then
+    OPEN_STUNNEL_5443=true
+    echo -e "${GREEN}UFW will also allow 5443/tcp for stunnel co-location.${NC}"
+else
+    OPEN_STUNNEL_5443=false
 fi
 
 # 1. System Update & Dependencies
