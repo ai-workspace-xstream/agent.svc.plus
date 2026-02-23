@@ -138,6 +138,7 @@ usage() {
     cat <<EOF
 Usage:
   $0 [--upgrade-only|--upgrade] [--node <domain>] [--auth-url <url>] [--internal-service-token <token>] [--open-stunnel-5443]
+  $0 --print-arch
 
 Env (optional):
   AUTH_URL
@@ -145,6 +146,7 @@ Env (optional):
   OPEN_STUNNEL_5443=true   # when co-locating postgresql.svc.plus on same node
 
 Examples:
+  # Supports AMD64 and ARM64 (aarch64)
   curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
     bash -s -- --node hk-xhttp.svc.plus
 
@@ -161,6 +163,10 @@ Examples:
   OPEN_STUNNEL_5443=true \\
   curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
     bash -s -- --node jp-xhttp.svc.plus
+
+  # Print detected architecture and download artifacts (no install)
+  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+    bash -s -- --print-arch
 EOF
 }
 
@@ -168,6 +174,7 @@ DOMAIN=""
 AUTH_URL="${AUTH_URL:-}"
 INTERNAL_SERVICE_TOKEN="${INTERNAL_SERVICE_TOKEN:-}"
 UPGRADE_ONLY=false
+PRINT_ARCH=false
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -199,6 +206,10 @@ while [ "$#" -gt 0 ]; do
             UPGRADE_ONLY=true
             shift
             ;;
+        --print-arch)
+            PRINT_ARCH=true
+            shift
+            ;;
         --open-stunnel-5443)
             OPEN_STUNNEL_5443=true
             shift
@@ -228,18 +239,21 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-if [ -z "$DOMAIN" ]; then
-    HOSTNAME=$(hostname)
-    echo -e "${YELLOW}No node provided. Using system hostname: ${HOSTNAME}${NC}"
-    DOMAIN="$HOSTNAME"
+if [ "$PRINT_ARCH" = false ]; then
+    if [ -z "$DOMAIN" ]; then
+        HOSTNAME=$(hostname)
+        echo -e "${YELLOW}No node provided. Using system hostname: ${HOSTNAME}${NC}"
+        DOMAIN="$HOSTNAME"
+    fi
+
+    if [ -z "$DOMAIN" ]; then
+        echo -e "${RED}Node domain is required.${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}Using node domain: ${DOMAIN}${NC}"
 fi
 
-if [ -z "$DOMAIN" ]; then
-    echo -e "${RED}Node domain is required.${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}Using node domain: ${DOMAIN}${NC}"
 if [ "$UPGRADE_ONLY" = true ]; then
     echo -e "${YELLOW}Running in upgrade-only mode: configuration files will not be overwritten.${NC}"
 fi
@@ -268,12 +282,39 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
 # 3. Go & Caddy Installation
 echo -e "${GREEN}[3/7] Installing Go and building Caddy with DNS + L4 plugins...${NC}"
 
+# Detect architecture for Go/xcaddy downloads.
+ARCH_RAW="$(uname -m)"
+GOARCH=""
+case "$ARCH_RAW" in
+    x86_64|amd64)
+        GOARCH="amd64"
+        ;;
+    aarch64|arm64)
+        GOARCH="arm64"
+        ;;
+    *)
+        echo -e "${RED}Unsupported architecture: ${ARCH_RAW}${NC}"
+        exit 1
+        ;;
+esac
+echo -e "${GREEN}Detected architecture: ${ARCH_RAW} (GOARCH=${GOARCH})${NC}"
+if [ "$PRINT_ARCH" = true ]; then
+    GO_VER="1.23.4"
+    GO_FILE="go${GO_VER}.linux-${GOARCH}.tar.gz"
+    XCADDY_VER="0.4.5"
+    XCADDY_DEB="xcaddy_${XCADDY_VER}_linux_${GOARCH}.deb"
+    echo -e "${GREEN}Go artifact: ${GO_FILE}${NC}"
+    echo -e "${GREEN}xcaddy artifact: ${XCADDY_DEB}${NC}"
+    exit 0
+fi
+
 # Install Go
 if ! command -v go &> /dev/null; then
     GO_VER="1.23.4"
-    GO_FILE="go${GO_VER}.linux-amd64.tar.gz"
+    GO_FILE="go${GO_VER}.linux-${GOARCH}.tar.gz"
     GO_URL="https://go.dev/dl/${GO_FILE}"
     LOCAL_TAR="/tmp/${GO_FILE}"
+    echo -e "${GREEN}Go artifact: ${GO_FILE}${NC}"
     
     NEED_DOWNLOAD=true
     
@@ -307,8 +348,16 @@ go version
 
 # Install xcaddy
 if ! command -v xcaddy &> /dev/null; then
-    wget https://github.com/caddyserver/xcaddy/releases/download/v0.4.5/xcaddy_0.4.5_linux_amd64.deb -O /tmp/xcaddy.deb
-    dpkg -i /tmp/xcaddy.deb
+    XCADDY_VER="0.4.5"
+    XCADDY_DEB="xcaddy_${XCADDY_VER}_linux_${GOARCH}.deb"
+    XCADDY_URL="https://github.com/caddyserver/xcaddy/releases/download/v${XCADDY_VER}/${XCADDY_DEB}"
+    echo -e "${GREEN}xcaddy artifact: ${XCADDY_DEB}${NC}"
+    if wget "$XCADDY_URL" -O /tmp/xcaddy.deb; then
+        dpkg -i /tmp/xcaddy.deb
+    else
+        echo -e "${YELLOW}xcaddy deb not available for ${GOARCH}. Falling back to 'go install'.${NC}"
+        GOBIN="/usr/local/bin" go install "github.com/caddyserver/xcaddy/cmd/xcaddy@v${XCADDY_VER}"
+    fi
 fi
 
 # Build Caddy

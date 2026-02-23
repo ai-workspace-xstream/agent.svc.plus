@@ -11,7 +11,7 @@
 
 ## 🚀 Quick Start (One-Shell)
 
-Deploy `agent.svc.plus` with a single command. This script sets up Xray, Caddy, Go, and the Agent service.
+Deploy `agent.svc.plus` with a single command. This script sets up Xray, Caddy, Go, and the Agent service. ARM64 (aarch64/arm64) and AMD64 are supported.
 
 > Note: `scripts/init_vhost.sh` is kept as a compatibility shim and now forwards to `scripts/setup-proxy.sh`.
 
