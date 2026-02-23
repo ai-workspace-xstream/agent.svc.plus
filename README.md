@@ -43,7 +43,7 @@ Pass controller URL and token via env so the node can register immediately:
 AUTH_URL=https://accounts-svc-plus-266500572462.asia-northeast1.run.app \
 INTERNAL_SERVICE_TOKEN=replace-with-token \
 curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
-  bash -s -- --node hk-xhttp.svc.plus
+  bash -s -- --node jp-xhttp.svc.plus
 ```
 
 ### Co-Located PostgreSQL (optional)
