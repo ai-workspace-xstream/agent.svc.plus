@@ -1,0 +1,64 @@
+---
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0755"
+  loop:
+    - "{{ agent_svc_plus_config_dir }}"
+    - "{{ agent_svc_plus_data_dir }}"
+    - "{{ xray_template_dir }}"
+
+- name: Deploy agent binary
+  ansible.builtin.copy:
+    src: agent-svc-plus
+    dest: "{{ agent_svc_plus_binary_path }}"
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0755"
+  notify: Restart agent-svc-plus
+
+- name: Deploy agent configuration
+  ansible.builtin.template:
+    src: agent-config.yaml.j2
+    dest: "{{ agent_svc_plus_config_path }}"
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0644"
+  notify: Restart agent-svc-plus
+
+- name: Deploy XHTTP template
+  ansible.builtin.template:
+    src: xray.xhttp.template.json.j2
+    dest: "{{ xray_template_dir }}/xray.xhttp.template.json"
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0644"
+  when: xray_enabled
+
+- name: Deploy TCP template
+  ansible.builtin.template:
+    src: xray.tcp.template.json.j2
+    dest: "{{ xray_template_dir }}/xray.tcp.template.json"
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0644"
+  when: xray_enabled
+
+- name: Deploy systemd service unit
+  ansible.builtin.template:
+    src: agent-svc-plus.service.j2
+    dest: "/etc/systemd/system/{{ agent_svc_plus_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart agent-svc-plus
+
+- name: Enable and start agent-svc-plus
+  ansible.builtin.systemd:
+    name: "{{ agent_svc_plus_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

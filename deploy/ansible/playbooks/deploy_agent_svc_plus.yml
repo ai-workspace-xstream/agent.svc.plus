@@ -1,0 +1,71 @@
+---
+- name: Deploy agent-svc-plus
+  hosts: agent_svc_plus
+  become: true
+  gather_facts: true
+  vars_files:
+    - "{{ lookup('ansible.builtin.env', 'AGENT_VARS_FILE') | default('../vars/agent_svc_plus.yml', true) }}"
+
+  pre_tasks:
+    - name: Validate INTERNAL_SERVICE_TOKEN is present
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.env', 'INTERNAL_SERVICE_TOKEN') | length > 0
+        fail_msg: "INTERNAL_SERVICE_TOKEN must be exported before running this playbook."
+        success_msg: "INTERNAL_SERVICE_TOKEN found"
+
+    - name: Set agent_api_token from environment
+      ansible.builtin.set_fact:
+        agent_api_token: "{{ lookup('ansible.builtin.env', 'INTERNAL_SERVICE_TOKEN') }}"
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert host is bootstrapped with setup-proxy.sh services
+      ansible.builtin.assert:
+        that:
+          - "'xray.service' in ansible_facts.services"
+          - "'xray-tcp.service' in ansible_facts.services"
+          - "'caddy.service' in ansible_facts.services"
+        fail_msg: "Target host must already be bootstrapped by scripts/setup-proxy.sh (missing xray.service or xray-tcp.service)."
+        success_msg: "Target host already has setup-proxy.sh service layout."
+
+    - name: Assert setup-proxy.sh config directories exist
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/caddy/Caddyfile
+        - /usr/local/etc/xray/templates
+      register: bootstrap_paths
+
+    - name: Validate setup-proxy.sh config directories are present
+      ansible.builtin.assert:
+        that:
+          - bootstrap_paths.results | map(attribute='stat.exists') | min
+        fail_msg: "Target host is missing /etc/caddy/Caddyfile or /usr/local/etc/xray/templates. Run scripts/setup-proxy.sh first."
+        success_msg: "setup-proxy.sh config paths exist."
+
+  roles:
+    - role: agent_svc_plus
+
+  post_tasks:
+    - name: Wait for service to start
+      ansible.builtin.wait_for:
+        timeout: 5
+
+    - name: Get service status
+      ansible.builtin.command: systemctl status {{ agent_svc_plus_service_name }}
+      register: service_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display service status
+      ansible.builtin.debug:
+        var: service_status.stdout_lines
+
+    - name: Verify agent is running
+      ansible.builtin.assert:
+        that:
+          - "'active (running)' in service_status.stdout"
+        fail_msg: "Agent service is not running"
+        success_msg: "Agent service is running"
