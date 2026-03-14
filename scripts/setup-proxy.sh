@@ -11,6 +11,8 @@ echo -e "${GREEN}Starting Agent Service Plus Installation...${NC}"
 
 XRAY_TCP_USER="caddy"
 OPEN_STUNNEL_5443="${OPEN_STUNNEL_5443:-false}"
+STANDALONE_MODE=false
+STANDALONE_UUID_FILE="/usr/local/etc/xray/standalone.uuid"
 
 is_truthy() {
     case "${1:-}" in
@@ -137,7 +139,7 @@ post_install_network_optimization() {
 usage() {
     cat <<EOF
 Usage:
-  $0 [--upgrade-only|--upgrade] [--node <domain>] [--auth-url <url>] [--internal-service-token <token>] [--open-stunnel-5443]
+  $0 [--upgrade-only|--upgrade] [--node <domain>] [--auth-url <url>] [--internal-service-token <token>] [--open-stunnel-5443] [--standalone]
   $0 --print-arch
 
 Env (optional):
@@ -163,6 +165,10 @@ Examples:
   OPEN_STUNNEL_5443=true \\
   curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
     bash -s -- --node jp-xhttp.svc.plus
+
+  # Standalone self-host mode: installs caddy + xray only, generates UUID and prints import links
+  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+    bash -s -- --node jp-xhttp.svc.plus --standalone
 
   # Print detected architecture and download artifacts (no install)
   curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
@@ -218,6 +224,10 @@ while [ "$#" -gt 0 ]; do
             OPEN_STUNNEL_5443="${1#*=}"
             shift
             ;;
+        --standalone)
+            STANDALONE_MODE=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -257,6 +267,9 @@ fi
 if [ "$UPGRADE_ONLY" = true ]; then
     echo -e "${YELLOW}Running in upgrade-only mode: configuration files will not be overwritten.${NC}"
 fi
+if [ "$STANDALONE_MODE" = true ]; then
+    echo -e "${GREEN}Running in standalone self-host mode (caddy + xray only).${NC}"
+fi
 if [ -n "$AUTH_URL" ]; then
     echo -e "${GREEN}Using AUTH_URL: ${AUTH_URL}${NC}"
 fi
@@ -265,6 +278,32 @@ if is_truthy "$OPEN_STUNNEL_5443"; then
     echo -e "${GREEN}UFW will also allow 5443/tcp for stunnel co-location.${NC}"
 else
     OPEN_STUNNEL_5443=false
+fi
+
+if [ "$PRINT_ARCH" = true ]; then
+    ARCH_RAW="$(uname -m)"
+    GOARCH=""
+    case "$ARCH_RAW" in
+        x86_64|amd64)
+            GOARCH="amd64"
+            ;;
+        aarch64|arm64)
+            GOARCH="arm64"
+            ;;
+        *)
+            echo -e "${RED}Unsupported architecture: ${ARCH_RAW}${NC}"
+            exit 1
+            ;;
+    esac
+
+    GO_VER="1.23.4"
+    GO_FILE="go${GO_VER}.linux-${GOARCH}.tar.gz"
+    XCADDY_VER="0.4.5"
+    XCADDY_DEB="xcaddy_${XCADDY_VER}_linux_${GOARCH}.deb"
+    echo -e "${GREEN}Detected architecture: ${ARCH_RAW} (GOARCH=${GOARCH})${NC}"
+    echo -e "${GREEN}Go artifact: ${GO_FILE}${NC}"
+    echo -e "${GREEN}xcaddy artifact: ${XCADDY_DEB}${NC}"
+    exit 0
 fi
 
 # 1. System Update & Dependencies
@@ -298,15 +337,6 @@ case "$ARCH_RAW" in
         ;;
 esac
 echo -e "${GREEN}Detected architecture: ${ARCH_RAW} (GOARCH=${GOARCH})${NC}"
-if [ "$PRINT_ARCH" = true ]; then
-    GO_VER="1.23.4"
-    GO_FILE="go${GO_VER}.linux-${GOARCH}.tar.gz"
-    XCADDY_VER="0.4.5"
-    XCADDY_DEB="xcaddy_${XCADDY_VER}_linux_${GOARCH}.deb"
-    echo -e "${GREEN}Go artifact: ${GO_FILE}${NC}"
-    echo -e "${GREEN}xcaddy artifact: ${XCADDY_DEB}${NC}"
-    exit 0
-fi
 
 # Install Go
 if ! command -v go &> /dev/null; then
@@ -421,12 +451,72 @@ ensure_caddy_user() {
 
 ensure_caddy_user
 
+generate_uuid() {
+    if command -v uuidgen >/dev/null 2>&1; then
+        uuidgen | tr '[:upper:]' '[:lower:]'
+    else
+        cat /proc/sys/kernel/random/uuid
+    fi
+}
+
+ensure_standalone_uuid() {
+    mkdir -p "$(dirname "$STANDALONE_UUID_FILE")"
+
+    if [ -f "$STANDALONE_UUID_FILE" ]; then
+        STANDALONE_UUID="$(tr -d '[:space:]' < "$STANDALONE_UUID_FILE")"
+    fi
+
+    if [ -z "${STANDALONE_UUID:-}" ]; then
+        STANDALONE_UUID="$(generate_uuid)"
+        printf '%s\n' "$STANDALONE_UUID" > "$STANDALONE_UUID_FILE"
+        chmod 0644 "$STANDALONE_UUID_FILE"
+    fi
+}
+
+render_xray_config_from_template() {
+    local template_path="$1"
+    local output_path="$2"
+    local uuid_value="$3"
+
+    sed "s|{{ UUID }}|${uuid_value}|g" "$template_path" > "$output_path"
+}
+
+print_standalone_links() {
+    local node_name="${DOMAIN}"
+    local xhttp_name="${node_name}-xhttp"
+    local tcp_name="${node_name}-tcp"
+    local xhttp_link
+    local tcp_link
+
+    xhttp_link="vless://${STANDALONE_UUID}@${DOMAIN}:443?encryption=none&security=tls&sni=${DOMAIN}&fp=chrome&type=xhttp&path=%2Fsplit#${xhttp_name}"
+    tcp_link="vless://${STANDALONE_UUID}@${DOMAIN}:1443?encryption=none&flow=xtls-rprx-vision&security=tls&sni=${DOMAIN}&fp=chrome&type=tcp#${tcp_name}"
+
+    echo ""
+    echo -e "${GREEN}Standalone node import links:${NC}"
+    echo "  XHTTP (recommended for OneXray/Xstream):"
+    echo "  ${xhttp_link}"
+    echo ""
+    echo "  TCP Vision:"
+    echo "  ${tcp_link}"
+    echo ""
+    echo "UUID:"
+    echo "  ${STANDALONE_UUID}"
+}
+
+disable_agent_service_if_present() {
+    if systemctl list-unit-files agent-svc-plus.service >/dev/null 2>&1; then
+        systemctl disable --now agent-svc-plus >/dev/null 2>&1 || true
+    fi
+}
+
 # 4. Configuration Directories
 echo -e "${GREEN}[4/7] Setting up configuration directories...${NC}"
 mkdir -p /usr/local/etc/xray
 mkdir -p /etc/caddy
 mkdir -p /etc/caddy/conf.d
-mkdir -p /etc/agent
+if [ "$STANDALONE_MODE" != true ]; then
+    mkdir -p /etc/agent
+fi
 
 # Co-location hygiene: remove known duplicated PostgreSQL caddy fragments
 # generated by older scripts (e.g. postgresql-postgresql-*.caddy).
@@ -435,25 +525,34 @@ for stale in /etc/caddy/conf.d/postgresql-postgresql-*.caddy; do
     rm -f "$stale" || true
 done
 
-# 5. Agent Installation
-echo -e "${GREEN}[5/7] Installing/Updating Agent Service...${NC}"
-
-AGENT_DIR="/opt/agent.svc.plus"
-
-if [ -d "$AGENT_DIR" ]; then
-    echo "Updating existing agent repository..."
-    cd "$AGENT_DIR"
-    git fetch origin
-    git reset --hard origin/main
+if [ "$STANDALONE_MODE" = true ]; then
+    echo -e "${GREEN}[5/7] Preparing standalone Xray configuration...${NC}"
+    mkdir -p /usr/local/etc/xray/templates
+    cp config/*.template.json /usr/local/etc/xray/templates/
+    ensure_standalone_uuid
+    render_xray_config_from_template /usr/local/etc/xray/templates/xray.xhttp.template.json /usr/local/etc/xray/config.json "$STANDALONE_UUID"
+    echo "Standalone UUID: ${STANDALONE_UUID}"
 else
-    git clone https://github.com/cloud-neutral-toolkit/agent.svc.plus.git "$AGENT_DIR"
-    cd "$AGENT_DIR"
-fi
+    # 5. Agent Installation
+    echo -e "${GREEN}[5/7] Installing/Updating Agent Service...${NC}"
 
-# Build
-echo "Building Agent binary..."
-go mod tidy
-go build -o /usr/local/bin/agent-svc-plus ./cmd/agent
+    AGENT_DIR="/opt/agent.svc.plus"
+
+    if [ -d "$AGENT_DIR" ]; then
+        echo "Updating existing agent repository..."
+        cd "$AGENT_DIR"
+        git fetch origin
+        git reset --hard origin/main
+    else
+        git clone https://github.com/cloud-neutral-toolkit/agent.svc.plus.git "$AGENT_DIR"
+        cd "$AGENT_DIR"
+    fi
+
+    # Build
+    echo "Building Agent binary..."
+    go mod tidy
+    go build -o /usr/local/bin/agent-svc-plus ./cmd/agent
+fi
 
 if [ "$UPGRADE_ONLY" = true ]; then
     post_install_network_optimization
@@ -462,42 +561,51 @@ if [ "$UPGRADE_ONLY" = true ]; then
     systemctl restart xray || true
     systemctl restart xray-tcp || true
     systemctl restart caddy || true
-    systemctl restart agent-svc-plus || true
+    if [ "$STANDALONE_MODE" != true ]; then
+        systemctl restart agent-svc-plus || true
+    fi
 
     echo -e "${GREEN}Upgrade Complete!${NC}"
     echo -e "Service states:"
     echo -e "  - xray: $(systemctl is-active xray || echo unknown)"
     echo -e "  - xray-tcp: $(systemctl is-active xray-tcp || echo unknown)"
     echo -e "  - caddy: $(systemctl is-active caddy || echo unknown)"
-    echo -e "  - agent-svc-plus: $(systemctl is-active agent-svc-plus || echo unknown)"
+    if [ "$STANDALONE_MODE" != true ]; then
+        echo -e "  - agent-svc-plus: $(systemctl is-active agent-svc-plus || echo unknown)"
+    fi
+    if [ "$STANDALONE_MODE" = true ]; then
+        print_standalone_links
+    fi
     exit 0
-fi
-
-# Copy default config if not exists, but don't overwrite user config
-mkdir -p /etc/agent
-if [ ! -f /etc/agent/account-agent.yaml ]; then
-    echo "Initializing new configuration file..."
-    cp account-agent.yaml /etc/agent/account-agent.yaml
-    # Initial path setup for templates in the new config
-    sed -i 's|config/xray.xhttp.template.json|/usr/local/etc/xray/templates/xray.xhttp.template.json|g' /etc/agent/account-agent.yaml
-    sed -i 's|config/xray.tcp.template.json|/usr/local/etc/xray/templates/xray.tcp.template.json|g' /etc/agent/account-agent.yaml
-else
-    echo "Configuration file exists at /etc/agent/account-agent.yaml, skipping overwrite."
-fi
-
-# Apply runtime config from args/env (idempotent)
-sed -i -E "s|^([[:space:]]*id:[[:space:]]*).*$|\\1\"${DOMAIN}\"|g" /etc/agent/account-agent.yaml
-if [ -n "$AUTH_URL" ]; then
-    sed -i -E "s|^([[:space:]]*controllerUrl:[[:space:]]*).*$|\\1\"${AUTH_URL}\"|g" /etc/agent/account-agent.yaml
-fi
-if [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
-    sed -i -E "s|^([[:space:]]*apiToken:[[:space:]]*).*$|\\1\"${INTERNAL_SERVICE_TOKEN}\"|g" /etc/agent/account-agent.yaml
 fi
 
 # Always update templates
 mkdir -p /usr/local/etc/xray/templates
 cp config/*.template.json /usr/local/etc/xray/templates/
 echo "Templates updated at /usr/local/etc/xray/templates/"
+
+if [ "$STANDALONE_MODE" != true ]; then
+    # Copy default config if not exists, but don't overwrite user config
+    mkdir -p /etc/agent
+    if [ ! -f /etc/agent/account-agent.yaml ]; then
+        echo "Initializing new configuration file..."
+        cp account-agent.yaml /etc/agent/account-agent.yaml
+        # Initial path setup for templates in the new config
+        sed -i 's|config/xray.xhttp.template.json|/usr/local/etc/xray/templates/xray.xhttp.template.json|g' /etc/agent/account-agent.yaml
+        sed -i 's|config/xray.tcp.template.json|/usr/local/etc/xray/templates/xray.tcp.template.json|g' /etc/agent/account-agent.yaml
+    else
+        echo "Configuration file exists at /etc/agent/account-agent.yaml, skipping overwrite."
+    fi
+
+    # Apply runtime config from args/env (idempotent)
+    sed -i -E "s|^([[:space:]]*id:[[:space:]]*).*$|\\1\"${DOMAIN}\"|g" /etc/agent/account-agent.yaml
+    if [ -n "$AUTH_URL" ]; then
+        sed -i -E "s|^([[:space:]]*controllerUrl:[[:space:]]*).*$|\\1\"${AUTH_URL}\"|g" /etc/agent/account-agent.yaml
+    fi
+    if [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
+        sed -i -E "s|^([[:space:]]*apiToken:[[:space:]]*).*$|\\1\"${INTERNAL_SERVICE_TOKEN}\"|g" /etc/agent/account-agent.yaml
+    fi
+fi
 
 # 6. Caddy Configuration
 echo -e "${GREEN}[6/7] Configuration Caddyfile...${NC}"
@@ -530,7 +638,12 @@ fi
 # Ensure Xray TCP template + config always match the chosen cert paths
 sed -i -E "s|(\"certificateFile\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\\1${XRAY_CERT}\\2|g" /usr/local/etc/xray/templates/xray.tcp.template.json
 sed -i -E "s|(\"keyFile\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\\1${XRAY_KEY}\\2|g" /usr/local/etc/xray/templates/xray.tcp.template.json
-cp /usr/local/etc/xray/templates/xray.tcp.template.json /usr/local/etc/xray/tcp-config.json
+if [ "$STANDALONE_MODE" = true ]; then
+    render_xray_config_from_template /usr/local/etc/xray/templates/xray.xhttp.template.json /usr/local/etc/xray/config.json "$STANDALONE_UUID"
+    render_xray_config_from_template /usr/local/etc/xray/templates/xray.tcp.template.json /usr/local/etc/xray/tcp-config.json "$STANDALONE_UUID"
+else
+    cp /usr/local/etc/xray/templates/xray.tcp.template.json /usr/local/etc/xray/tcp-config.json
+fi
 chown "${XRAY_TCP_USER}:${XRAY_TCP_USER}" /usr/local/etc/xray/tcp-config.json || true
 chmod 0644 /usr/local/etc/xray/tcp-config.json
 echo "Updated Xray TCP template/config to use: ${XRAY_CERT}"
@@ -552,7 +665,7 @@ ${DOMAIN} {
     }
 
     # Fallback/Default site content
-    respond "Agent Service Plus Node"
+    respond "$( [ "$STANDALONE_MODE" = true ] && printf '%s' 'Standalone Xray Node' || printf '%s' 'Agent Service Plus Node' )"
 }
 
 import /etc/caddy/conf.d/*.caddy
@@ -654,6 +767,7 @@ Environment=XRAY_LOCATION_ASSET=/usr/local/share/xray/
 WantedBy=multi-user.target
 EOF
 
+if [ "$STANDALONE_MODE" != true ]; then
 # Agent Service
 cat > /etc/systemd/system/agent-svc-plus.service <<EOF
 [Unit]
@@ -669,12 +783,15 @@ WorkingDirectory=/opt/agent.svc.plus
 [Install]
 WantedBy=multi-user.target
 EOF
+fi
 
 systemctl daemon-reload
 systemctl enable xray
 systemctl enable xray-tcp
 systemctl enable caddy || true
-systemctl enable agent-svc-plus
+if [ "$STANDALONE_MODE" != true ]; then
+    systemctl enable agent-svc-plus
+fi
 systemctl restart xray || true
 systemctl restart caddy || true
 
@@ -688,7 +805,10 @@ if [ ! -f "$LE_CERT" ] || [ ! -f "$LE_KEY" ]; then
 fi
 systemctl restart xray-tcp || true
 
-if [ -n "$AUTH_URL" ] && [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
+if [ "$STANDALONE_MODE" = true ]; then
+    disable_agent_service_if_present
+    echo -e "${GREEN}Standalone mode: skipping agent-svc-plus service installation.${NC}"
+elif [ -n "$AUTH_URL" ] && [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
     systemctl restart agent-svc-plus
 else
     echo -e "${YELLOW}Skipping agent-svc-plus start: AUTH_URL or INTERNAL_SERVICE_TOKEN is missing.${NC}"
@@ -697,14 +817,22 @@ fi
 post_install_network_optimization
 
 echo -e "${GREEN}Installation Complete!${NC}"
-echo -e "Config file: /etc/agent/account-agent.yaml"
-echo -e "  - agent.id: ${DOMAIN}"
-echo -e "  - controllerUrl: ${AUTH_URL:-<not set>}"
-if [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
-    echo -e "  - apiToken: <provided>"
+if [ "$STANDALONE_MODE" = true ]; then
+    echo -e "Standalone config:"
+    echo -e "  - xray xhttp: /usr/local/etc/xray/config.json"
+    echo -e "  - xray tcp: /usr/local/etc/xray/tcp-config.json"
+    echo -e "  - uuid: ${STANDALONE_UUID}"
+    print_standalone_links
 else
-    echo -e "  - apiToken: <not set>"
-fi
-if [ -z "$AUTH_URL" ] || [ -z "$INTERNAL_SERVICE_TOKEN" ]; then
-    echo -e "Set AUTH_URL and INTERNAL_SERVICE_TOKEN then run: systemctl restart agent-svc-plus"
+    echo -e "Config file: /etc/agent/account-agent.yaml"
+    echo -e "  - agent.id: ${DOMAIN}"
+    echo -e "  - controllerUrl: ${AUTH_URL:-<not set>}"
+    if [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
+        echo -e "  - apiToken: <provided>"
+    else
+        echo -e "  - apiToken: <not set>"
+    fi
+    if [ -z "$AUTH_URL" ] || [ -z "$INTERNAL_SERVICE_TOKEN" ]; then
+        echo -e "Set AUTH_URL and INTERNAL_SERVICE_TOKEN then run: systemctl restart agent-svc-plus"
+    fi
 fi

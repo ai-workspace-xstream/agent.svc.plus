@@ -63,6 +63,29 @@ curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plu
   bash -s -- --node jp-xhttp.svc.plus --open-stunnel-5443
 ```
 
+### Standalone Self-Host Mode
+Deploy only `caddy + xray-core` without the Agent/controller workflow. The installer
+will generate and persist a random UUID, write static Xray configs, and print ready-to-import
+VLESS links for OneXray/Xstream.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+  bash -s -- --node jp-xhttp.svc.plus --standalone
+```
+
+This mode keeps:
+
+- `xray.service`
+- `xray-tcp.service`
+- `caddy.service`
+- the existing certificate flow driven by Caddy
+
+It skips:
+
+- `agent-svc-plus`
+- `controllerUrl` / `apiToken`
+- dynamic config sync from `accounts.svc.plus`
+
 ## Cloudflare Workers Support
 
 This repo now includes an optional Cloudflare Workers edge proxy under
