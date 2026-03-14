@@ -13,6 +13,8 @@ XRAY_TCP_USER="caddy"
 OPEN_STUNNEL_5443="${OPEN_STUNNEL_5443:-false}"
 STANDALONE_MODE=false
 STANDALONE_UUID_FILE="/usr/local/etc/xray/standalone.uuid"
+CLOUDFLARE_ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-svc.plus}"
+CLOUDFLARE_API_BASE="https://api.cloudflare.com/client/v4"
 
 is_truthy() {
     case "${1:-}" in
@@ -133,6 +135,98 @@ post_install_network_optimization() {
         setup_fq_qdisc_service
     else
         echo -e "${YELLOW}tc command not found; skipping fq qdisc persistence setup.${NC}"
+    fi
+}
+
+resolve_public_ipv4() {
+    local ip=""
+
+    for endpoint in \
+        "https://ipv4.icanhazip.com" \
+        "https://api.ipify.org" \
+        "https://ifconfig.me/ip"
+    do
+        ip="$(curl -4fsSL --max-time 5 "$endpoint" 2>/dev/null | tr -d '[:space:]' || true)"
+        if printf '%s\n' "$ip" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            printf '%s\n' "$ip"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+update_cloudflare_dns_for_domain() {
+    local domain_name="$1"
+    local target_ip="$2"
+    local token="${CLOUDFLARE_API_TOKEN:-}"
+    local zone_lookup
+    local zone_id
+    local record_lookup
+    local record_id
+    local existing_type
+    local existing_content
+    local existing_proxied
+
+    if [ -z "$token" ]; then
+        echo -e "${YELLOW}CLOUDFLARE_API_TOKEN not set; skipping automatic DNS update for ${domain_name}.${NC}"
+        return 0
+    fi
+
+    echo -e "${GREEN}[dns] Updating Cloudflare DNS: ${domain_name} -> ${target_ip}${NC}"
+
+    zone_lookup="$(curl -fsSL \
+        -H "Authorization: Bearer ${token}" \
+        -H "Content-Type: application/json" \
+        "${CLOUDFLARE_API_BASE}/zones?name=${CLOUDFLARE_ZONE_NAME}")" || {
+        echo -e "${YELLOW}[dns] Failed to resolve Cloudflare zone ${CLOUDFLARE_ZONE_NAME}; skipping automatic DNS update.${NC}"
+        return 0
+    }
+
+    zone_id="$(printf '%s' "$zone_lookup" | python3 -c 'import json,sys; data=json.load(sys.stdin); print((data.get("result") or [{}])[0].get("id",""))' 2>/dev/null || true)"
+    if [ -z "$zone_id" ]; then
+        echo -e "${YELLOW}[dns] Could not determine Cloudflare zone id for ${CLOUDFLARE_ZONE_NAME}; skipping DNS update.${NC}"
+        return 0
+    fi
+
+    record_lookup="$(curl -fsSL \
+        -H "Authorization: Bearer ${token}" \
+        -H "Content-Type: application/json" \
+        "${CLOUDFLARE_API_BASE}/zones/${zone_id}/dns_records?name=${domain_name}")" || {
+        echo -e "${YELLOW}[dns] Failed to query existing DNS records for ${domain_name}; skipping DNS update.${NC}"
+        return 0
+    }
+
+    record_id="$(printf '%s' "$record_lookup" | python3 -c 'import json,sys; data=json.load(sys.stdin); rows=data.get("result") or []; row=next((r for r in rows if r.get("type")=="A"), {}); print(row.get("id",""))' 2>/dev/null || true)"
+    existing_type="$(printf '%s' "$record_lookup" | python3 -c 'import json,sys; data=json.load(sys.stdin); rows=data.get("result") or []; row=next((r for r in rows if r.get("type")=="A"), {}); print(row.get("type",""))' 2>/dev/null || true)"
+    existing_content="$(printf '%s' "$record_lookup" | python3 -c 'import json,sys; data=json.load(sys.stdin); rows=data.get("result") or []; row=next((r for r in rows if r.get("type")=="A"), {}); print(row.get("content",""))' 2>/dev/null || true)"
+    existing_proxied="$(printf '%s' "$record_lookup" | python3 -c 'import json,sys; data=json.load(sys.stdin); rows=data.get("result") or []; row=next((r for r in rows if r.get("type")=="A"), {}); print(str(row.get("proxied", False)).lower())' 2>/dev/null || true)"
+
+    if [ -n "$record_id" ] && [ "$existing_type" = "A" ] && [ "$existing_content" = "$target_ip" ] && [ "$existing_proxied" = "false" ]; then
+        echo -e "${GREEN}[dns] Cloudflare A record already up to date.${NC}"
+        return 0
+    fi
+
+    if [ -n "$record_id" ]; then
+        curl -fsSL -X PUT \
+            -H "Authorization: Bearer ${token}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"A\",\"name\":\"${domain_name}\",\"content\":\"${target_ip}\",\"ttl\":300,\"proxied\":false}" \
+            "${CLOUDFLARE_API_BASE}/zones/${zone_id}/dns_records/${record_id}" >/dev/null || {
+            echo -e "${YELLOW}[dns] Failed to update existing A record for ${domain_name}.${NC}"
+            return 0
+        }
+        echo -e "${GREEN}[dns] Updated existing A record for ${domain_name}.${NC}"
+    else
+        curl -fsSL -X POST \
+            -H "Authorization: Bearer ${token}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"A\",\"name\":\"${domain_name}\",\"content\":\"${target_ip}\",\"ttl\":300,\"proxied\":false}" \
+            "${CLOUDFLARE_API_BASE}/zones/${zone_id}/dns_records" >/dev/null || {
+            echo -e "${YELLOW}[dns] Failed to create A record for ${domain_name}.${NC}"
+            return 0
+        }
+        echo -e "${GREEN}[dns] Created A record for ${domain_name}.${NC}"
     fi
 }
 
@@ -670,6 +764,13 @@ ${DOMAIN} {
 
 import /etc/caddy/conf.d/*.caddy
 EOF
+
+PUBLIC_IPV4="$(resolve_public_ipv4 || true)"
+if [ -n "${PUBLIC_IPV4:-}" ]; then
+    update_cloudflare_dns_for_domain "$DOMAIN" "$PUBLIC_IPV4"
+else
+    echo -e "${YELLOW}[dns] Could not determine public IPv4 address; skipping automatic Cloudflare DNS update.${NC}"
+fi
 
 # 7. Systemd Services
 echo -e "${GREEN}[7/7] Installing Systemd Services...${NC}"
