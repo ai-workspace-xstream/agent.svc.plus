@@ -15,6 +15,9 @@ STANDALONE_MODE=false
 STANDALONE_UUID_FILE="/usr/local/etc/xray/standalone.uuid"
 CLOUDFLARE_ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-svc.plus}"
 CLOUDFLARE_API_BASE="https://api.cloudflare.com/client/v4"
+GITHUB_REPO="${GITHUB_REPO:-cloud-neutral-toolkit/agent.svc.plus}"
+AGENT_RELEASE_TAG="${AGENT_RELEASE_TAG:-latest}"
+AGENT_RELEASE_BASE_URL="https://github.com/${GITHUB_REPO}/releases"
 
 is_truthy() {
     case "${1:-}" in
@@ -25,6 +28,79 @@ is_truthy() {
             return 1
             ;;
     esac
+}
+
+detect_goarch() {
+    local arch_raw
+    arch_raw="$(uname -m)"
+    case "$arch_raw" in
+        x86_64|amd64)
+            printf 'amd64\n'
+            ;;
+        aarch64|arm64)
+            printf 'arm64\n'
+            ;;
+        *)
+            echo -e "${RED}Unsupported architecture: ${arch_raw}${NC}" >&2
+            return 1
+            ;;
+    esac
+}
+
+resolve_release_download_url() {
+    local asset_name="$1"
+    if [ "${AGENT_RELEASE_TAG}" = "latest" ]; then
+        printf '%s/latest/download/%s\n' "${AGENT_RELEASE_BASE_URL}" "${asset_name}"
+    else
+        printf '%s/download/%s/%s\n' "${AGENT_RELEASE_BASE_URL}" "${AGENT_RELEASE_TAG}" "${asset_name}"
+    fi
+}
+
+install_prebuilt_runtime_bundle() {
+    local goarch="$1"
+    local asset_name="artifact-${goarch}.tar.gz"
+    local asset_url
+    local tmp_dir
+
+    asset_url="$(resolve_release_download_url "${asset_name}")"
+    tmp_dir="$(mktemp -d /tmp/agent-runtime.XXXXXX)"
+
+    echo "Downloading runtime bundle: ${asset_name}"
+    if ! curl -fL --retry 3 --connect-timeout 10 -o "${tmp_dir}/${asset_name}" "${asset_url}"; then
+        echo -e "${RED}Failed to download runtime bundle from GitHub Release.${NC}"
+        echo "Checked: ${asset_url}"
+        exit 1
+    fi
+
+    tar -xzf "${tmp_dir}/${asset_name}" -C "${tmp_dir}"
+
+    if [ ! -f "${tmp_dir}/agent-svc-plus" ] || [ ! -f "${tmp_dir}/caddy" ]; then
+        echo -e "${RED}Runtime bundle is missing required binaries (agent-svc-plus/caddy).${NC}"
+        exit 1
+    fi
+
+    install -m 755 "${tmp_dir}/agent-svc-plus" /usr/local/bin/agent-svc-plus
+    install -m 755 "${tmp_dir}/caddy" /usr/bin/caddy
+    rm -rf "${tmp_dir}"
+}
+
+fetch_repo_archive() {
+    local tmp_dir
+    local extracted_dir
+    tmp_dir="$(mktemp -d /tmp/agent-repo.XXXXXX)"
+
+    curl -fL --retry 3 --connect-timeout 10 \
+        "https://github.com/${GITHUB_REPO}/archive/refs/heads/main.tar.gz" \
+        -o "${tmp_dir}/repo.tar.gz"
+    tar -xzf "${tmp_dir}/repo.tar.gz" -C "${tmp_dir}"
+    extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -type d -name 'agent.svc.plus-*' | head -n 1)"
+
+    if [ -z "${extracted_dir}" ]; then
+        echo -e "${RED}Failed to fetch repository archive for templates/config.${NC}"
+        exit 1
+    fi
+
+    printf '%s\n' "${extracted_dir}"
 }
 
 apply_low_latency_tuning() {
@@ -376,27 +452,9 @@ fi
 
 if [ "$PRINT_ARCH" = true ]; then
     ARCH_RAW="$(uname -m)"
-    GOARCH=""
-    case "$ARCH_RAW" in
-        x86_64|amd64)
-            GOARCH="amd64"
-            ;;
-        aarch64|arm64)
-            GOARCH="arm64"
-            ;;
-        *)
-            echo -e "${RED}Unsupported architecture: ${ARCH_RAW}${NC}"
-            exit 1
-            ;;
-    esac
-
-    GO_VER="1.23.4"
-    GO_FILE="go${GO_VER}.linux-${GOARCH}.tar.gz"
-    XCADDY_VER="0.4.5"
-    XCADDY_DEB="xcaddy_${XCADDY_VER}_linux_${GOARCH}.deb"
+    GOARCH="$(detect_goarch)"
     echo -e "${GREEN}Detected architecture: ${ARCH_RAW} (GOARCH=${GOARCH})${NC}"
-    echo -e "${GREEN}Go artifact: ${GO_FILE}${NC}"
-    echo -e "${GREEN}xcaddy artifact: ${XCADDY_DEB}${NC}"
+    echo -e "${GREEN}Runtime bundle asset: artifact-${GOARCH}.tar.gz${NC}"
     exit 0
 fi
 
@@ -412,79 +470,14 @@ fi
 echo -e "${GREEN}[2/7] Installing Xray...${NC}"
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
-# 3. Go & Caddy Installation
-echo -e "${GREEN}[3/7] Installing Go and building Caddy with DNS + L4 plugins...${NC}"
+# 3. Runtime Bundle Installation
+echo -e "${GREEN}[3/7] Installing prebuilt runtime bundle (custom Caddy + agent-svc-plus)...${NC}"
 
-# Detect architecture for Go/xcaddy downloads.
 ARCH_RAW="$(uname -m)"
-GOARCH=""
-case "$ARCH_RAW" in
-    x86_64|amd64)
-        GOARCH="amd64"
-        ;;
-    aarch64|arm64)
-        GOARCH="arm64"
-        ;;
-    *)
-        echo -e "${RED}Unsupported architecture: ${ARCH_RAW}${NC}"
-        exit 1
-        ;;
-esac
+GOARCH="$(detect_goarch)"
 echo -e "${GREEN}Detected architecture: ${ARCH_RAW} (GOARCH=${GOARCH})${NC}"
+install_prebuilt_runtime_bundle "${GOARCH}"
 
-# Install Go
-if ! command -v go &> /dev/null; then
-    GO_VER="1.23.4"
-    GO_FILE="go${GO_VER}.linux-${GOARCH}.tar.gz"
-    GO_URL="https://go.dev/dl/${GO_FILE}"
-    LOCAL_TAR="/tmp/${GO_FILE}"
-    echo -e "${GREEN}Go artifact: ${GO_FILE}${NC}"
-    
-    NEED_DOWNLOAD=true
-    
-    if [ -f "$LOCAL_TAR" ]; then
-        echo "Found cached Go tarball at $LOCAL_TAR"
-        echo "Verifying checksum..."
-        # Fetch expected SHA256
-        REMOTE_SHA256=$(curl -sL "${GO_URL}.sha256")
-        if [ -n "$REMOTE_SHA256" ]; then
-            LOCAL_SHA256=$(sha256sum "$LOCAL_TAR" | awk '{print $1}')
-            if [ "$LOCAL_SHA256" == "$REMOTE_SHA256" ]; then
-                echo -e "${GREEN}Checksum verified. Skipping download.${NC}"
-                NEED_DOWNLOAD=false
-            else
-                echo -e "${YELLOW}Checksum mismatch (Local: $LOCAL_SHA256, Remote: $REMOTE_SHA256). Re-downloading...${NC}"
-            fi
-        else
-            echo "Could not fetch remote checksum. Proceeding with existing file."
-            NEED_DOWNLOAD=false
-        fi
-    fi
-
-    if [ "$NEED_DOWNLOAD" = true ]; then
-        wget "$GO_URL" -O "$LOCAL_TAR"
-    fi
-    
-    rm -rf /usr/local/go && tar -C /usr/local -xzf "$LOCAL_TAR"
-    export PATH=$PATH:/usr/local/go/bin
-fi
-go version
-
-# Install xcaddy
-if ! command -v xcaddy &> /dev/null; then
-    XCADDY_VER="0.4.5"
-    XCADDY_DEB="xcaddy_${XCADDY_VER}_linux_${GOARCH}.deb"
-    XCADDY_URL="https://github.com/caddyserver/xcaddy/releases/download/v${XCADDY_VER}/${XCADDY_DEB}"
-    echo -e "${GREEN}xcaddy artifact: ${XCADDY_DEB}${NC}"
-    if wget "$XCADDY_URL" -O /tmp/xcaddy.deb; then
-        dpkg -i /tmp/xcaddy.deb
-    else
-        echo -e "${YELLOW}xcaddy deb not available for ${GOARCH}. Falling back to 'go install'.${NC}"
-        GOBIN="/usr/local/bin" go install "github.com/caddyserver/xcaddy/cmd/xcaddy@v${XCADDY_VER}"
-    fi
-fi
-
-# Build Caddy
 # Function to compare versions
 version_lt() { test "$(echo "$@" | tr " " "\n" | sort -rV | head -n 1)" != "$1"; }
 
@@ -501,15 +494,11 @@ REQUIRED_VER="2.8.0"
 echo "Installed Caddy Version: $INSTALLED_CADDY_VER"
 echo "Caddy L4 Module Present: $CADDY_HAS_L4"
 
-if [ "$UPGRADE_ONLY" = true ] || version_lt "$INSTALLED_CADDY_VER" "$REQUIRED_VER" || [ "$CADDY_HAS_L4" != true ]; then
-    echo -e "${YELLOW}Building/Upgrading Caddy with required plugins...${NC}"
-    xcaddy build \
-        --with github.com/caddy-dns/cloudflare \
-        --with github.com/caddy-dns/alidns \
-        --with github.com/mholt/caddy-l4 \
-        --output /usr/bin/caddy
+if version_lt "$INSTALLED_CADDY_VER" "$REQUIRED_VER" || [ "$CADDY_HAS_L4" != true ]; then
+    echo -e "${RED}Installed prebuilt Caddy is missing required version/plugins.${NC}"
+    exit 1
 else
-    echo -e "${GREEN}Caddy is up to date (v$INSTALLED_CADDY_VER). Skipping build.${NC}"
+    echo -e "${GREEN}Caddy bundle verified (v$INSTALLED_CADDY_VER with layer4).${NC}"
 fi
 
 caddy version
@@ -619,33 +608,19 @@ for stale in /etc/caddy/conf.d/postgresql-postgresql-*.caddy; do
     rm -f "$stale" || true
 done
 
+REPO_SOURCE_DIR="$(fetch_repo_archive)"
+
 if [ "$STANDALONE_MODE" = true ]; then
     echo -e "${GREEN}[5/7] Preparing standalone Xray configuration...${NC}"
     mkdir -p /usr/local/etc/xray/templates
-    cp config/*.template.json /usr/local/etc/xray/templates/
+    cp "${REPO_SOURCE_DIR}"/config/*.template.json /usr/local/etc/xray/templates/
     ensure_standalone_uuid
     render_xray_config_from_template /usr/local/etc/xray/templates/xray.xhttp.template.json /usr/local/etc/xray/config.json "$STANDALONE_UUID"
     echo "Standalone UUID: ${STANDALONE_UUID}"
 else
     # 5. Agent Installation
     echo -e "${GREEN}[5/7] Installing/Updating Agent Service...${NC}"
-
-    AGENT_DIR="/opt/agent.svc.plus"
-
-    if [ -d "$AGENT_DIR" ]; then
-        echo "Updating existing agent repository..."
-        cd "$AGENT_DIR"
-        git fetch origin
-        git reset --hard origin/main
-    else
-        git clone https://github.com/cloud-neutral-toolkit/agent.svc.plus.git "$AGENT_DIR"
-        cd "$AGENT_DIR"
-    fi
-
-    # Build
-    echo "Building Agent binary..."
-    go mod tidy
-    go build -o /usr/local/bin/agent-svc-plus ./cmd/agent
+    echo "agent-svc-plus already installed from runtime bundle."
 fi
 
 if [ "$UPGRADE_ONLY" = true ]; then
@@ -675,7 +650,7 @@ fi
 
 # Always update templates
 mkdir -p /usr/local/etc/xray/templates
-cp config/*.template.json /usr/local/etc/xray/templates/
+cp "${REPO_SOURCE_DIR}"/config/*.template.json /usr/local/etc/xray/templates/
 echo "Templates updated at /usr/local/etc/xray/templates/"
 
 if [ "$STANDALONE_MODE" != true ]; then
@@ -683,7 +658,7 @@ if [ "$STANDALONE_MODE" != true ]; then
     mkdir -p /etc/agent
     if [ ! -f /etc/agent/account-agent.yaml ]; then
         echo "Initializing new configuration file..."
-        cp account-agent.yaml /etc/agent/account-agent.yaml
+        cp "${REPO_SOURCE_DIR}/account-agent.yaml" /etc/agent/account-agent.yaml
         # Initial path setup for templates in the new config
         sed -i 's|config/xray.xhttp.template.json|/usr/local/etc/xray/templates/xray.xhttp.template.json|g' /etc/agent/account-agent.yaml
         sed -i 's|config/xray.tcp.template.json|/usr/local/etc/xray/templates/xray.tcp.template.json|g' /etc/agent/account-agent.yaml
