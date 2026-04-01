@@ -30,8 +30,14 @@ type StatusReport struct {
 
 // XrayStatus describes the synchronisation state of the managed Xray process.
 type XrayStatus struct {
-	Running    bool       `json:"running"`
-	Clients    int        `json:"clients"`
-	LastSync   *time.Time `json:"lastSync,omitempty"`
-	ConfigHash string     `json:"configHash,omitempty"`
+	Running      bool       `json:"running"`
+	Clients      int        `json:"clients"`
+	LastSync     *time.Time `json:"lastSync,omitempty"`
+	ConfigHash   string     `json:"configHash,omitempty"`
+	NodeID       string     `json:"nodeId,omitempty"`
+	Region       string     `json:"region,omitempty"`
+	LineCode     string     `json:"lineCode,omitempty"`
+	PricingGroup string     `json:"pricingGroup,omitempty"`
+	StatsEnabled bool       `json:"statsEnabled"`
+	XrayRevision string     `json:"xrayRevision,omitempty"`
 }

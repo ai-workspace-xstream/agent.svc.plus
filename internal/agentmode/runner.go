@@ -167,7 +167,7 @@ func Run(ctx context.Context, opts Options) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		runStatusReporter(reporterCtx, client, tracker, opts.Agent.ID, statusInterval, syncInterval, logger)
+		runStatusReporter(reporterCtx, client, tracker, opts.Agent, statusInterval, syncInterval, logger)
 	}()
 
 	<-ctx.Done()
@@ -184,13 +184,13 @@ func buildUserAgent(id string) string {
 	return fmt.Sprintf("xcontrol-agent/%s", id)
 }
 
-func runStatusReporter(ctx context.Context, client *Client, tracker *syncTracker, agentID string, interval, syncInterval time.Duration, logger *slog.Logger) {
+func runStatusReporter(ctx context.Context, client *Client, tracker *syncTracker, agent config.Agent, interval, syncInterval time.Duration, logger *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	send := func() {
 		snapshot := tracker.Snapshot()
-		report := buildStatusReport(agentID, snapshot, syncInterval)
+		report := buildStatusReport(agent, snapshot, syncInterval)
 		if err := client.ReportStatus(ctx, report); err != nil {
 			logger.Warn("failed to report agent status", "err", err)
 		}
@@ -208,7 +208,7 @@ func runStatusReporter(ctx context.Context, client *Client, tracker *syncTracker
 	}
 }
 
-func buildStatusReport(agentID string, snapshot trackerSnapshot, syncInterval time.Duration) agentproto.StatusReport {
+func buildStatusReport(agent config.Agent, snapshot trackerSnapshot, syncInterval time.Duration) agentproto.StatusReport {
 	healthy := snapshot.LastError == "" && !snapshot.LastSuccess.IsZero()
 
 	running := false
@@ -220,7 +220,7 @@ func buildStatusReport(agentID string, snapshot trackerSnapshot, syncInterval ti
 	}
 
 	report := agentproto.StatusReport{
-		AgentID:      agentID,
+		AgentID:      agent.ID,
 		Healthy:      healthy,
 		Message:      snapshot.LastError,
 		Users:        snapshot.Clients,
@@ -235,8 +235,23 @@ func buildStatusReport(agentID string, snapshot trackerSnapshot, syncInterval ti
 				copy := *lastSyncPtr
 				return &copy
 			}(),
+			NodeID:       firstNonEmpty(strings.TrimSpace(agent.NodeID), strings.TrimSpace(agent.ID)),
+			Region:       strings.TrimSpace(agent.Region),
+			LineCode:     strings.TrimSpace(agent.LineCode),
+			PricingGroup: strings.TrimSpace(agent.PricingGroup),
+			StatsEnabled: agent.StatsEnabled,
+			XrayRevision: snapshot.Revision,
 		},
 	}
 
 	return report
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

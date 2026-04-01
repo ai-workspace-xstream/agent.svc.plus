@@ -132,6 +132,15 @@ func (g Generator) Render(clients []Client) ([]byte, error) {
 }
 
 func updateClients(root map[string]interface{}, clients []Client) error {
+	for _, c := range clients {
+		if strings.TrimSpace(c.ID) == "" {
+			return errors.New("client id is required")
+		}
+		if strings.TrimSpace(c.Email) == "" {
+			return fmt.Errorf("client %s email is required for xray stats", c.ID)
+		}
+	}
+
 	// 1. Update Inbounds (Server side)
 	if inboundsValue, ok := root["inbounds"]; ok {
 		if inboundsSlice, ok := inboundsValue.([]interface{}); ok && len(inboundsSlice) > 0 {

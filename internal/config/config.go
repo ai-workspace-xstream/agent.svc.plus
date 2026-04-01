@@ -22,6 +22,11 @@ type Log struct {
 
 type Agent struct {
 	ID             string        `yaml:"id"`
+	NodeID         string        `yaml:"nodeId"`
+	Region         string        `yaml:"region"`
+	LineCode       string        `yaml:"lineCode"`
+	PricingGroup   string        `yaml:"pricingGroup"`
+	StatsEnabled   bool          `yaml:"statsEnabled"`
 	ControllerURL  string        `yaml:"controllerUrl"`
 	APIToken       string        `yaml:"apiToken"`
 	Domain         string        `yaml:"domain"`
