@@ -59,34 +59,46 @@ jobs:
 
       - name: Prepare bundle
         run: |
-          mkdir -p bundle/config
+          mkdir -p bundle/config release-assets
           cp dist/agent-svc-plus bundle/agent-svc-plus
           cp dist/caddy bundle/caddy
           cp account-agent.yaml bundle/account-agent.yaml
           cp config/*.template.json bundle/config/
-          tar -czf artifact.tar.gz -C bundle .
+          tar -czf "release-assets/artifact-${{ matrix.goarch }}.tar.gz" -C bundle .
+          cp dist/agent-svc-plus "release-assets/agent-svc-plus-linux-${{ matrix.goarch }}"
+          cp dist/caddy "release-assets/caddy-linux-${{ matrix.goarch }}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         with:
-          name: artifact-${{ matrix.goarch }}
-          path: artifact.tar.gz
+          name: release-assets-${{ matrix.goarch }}
+          path: release-assets/
           if-no-files-found: error
 
-      - name: Rename release assets
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          cp artifact.tar.gz artifact-${{ matrix.goarch }}.tar.gz
-          cp dist/agent-svc-plus agent-svc-plus-linux-${{ matrix.goarch }}
-          cp dist/caddy caddy-linux-${{ matrix.goarch }}
+  publish:
+    name: Publish Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
 
-      - name: Publish release assets
-        if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
+
           gh release upload "${GITHUB_REF_NAME}" \
-            "artifact-${{ matrix.goarch }}.tar.gz" \
-            "agent-svc-plus-linux-${{ matrix.goarch }}" \
-            "caddy-linux-${{ matrix.goarch }}" \
+            release-assets/* \
             --clobber
