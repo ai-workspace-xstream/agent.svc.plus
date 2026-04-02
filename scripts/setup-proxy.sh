@@ -490,7 +490,7 @@ if command -v caddy &> /dev/null; then
     fi
 fi
 
-REQUIRED_VER="2.8.0"
+REQUIRED_VER="2.11.1"
 echo "Installed Caddy Version: $INSTALLED_CADDY_VER"
 echo "Caddy L4 Module Present: $CADDY_HAS_L4"
 
