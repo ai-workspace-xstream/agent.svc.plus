@@ -1,0 +1,98 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: accounts-svc-plus
+  labels:
+    cloud.googleapis.com/location: asia-northeast1
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/startup-cpu-boost: 'true'
+        autoscaling.knative.dev/maxScale: '20'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: 266500572462-compute@developer.gserviceaccount.com
+      containers:
+      # --- 主应用容器 ---
+      - name: accounts-api
+        image: asia-northeast1-docker.pkg.dev/xzerolab-480008/cloud-run-source-deploy/accounts.svc.plus/accounts-svc-plus:latest
+        ports:
+        - name: http1
+          containerPort: 8080
+        env:
+        - name: CONFIG_TEMPLATE
+          value: "/app/config/account.cloudrun.yaml"
+        - name: PGADMIN_PASSWORD
+          value: admin_password
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-password
+              key: latest
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-password
+              key: latest
+        - name: DB_HOST
+          value: "127.0.0.1"
+        - name: DB_PORT
+          value: "15432"
+        - name: DB_USER
+          value: postgres
+        - name: POSTGRES_USER
+          value: postgres
+        - name: DB_NAME
+          value: account
+        # --- SMTP Configuration ---
+        - name: SMTP_HOST
+          value: "smtp.qq.com"
+        - name: SMTP_PORT
+          value: "587"
+        - name: SMTP_FROM
+          value: "XControl Account <manbuzhe2009@qq.com>"
+        - name: SMTP_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: smtp-username
+              key: latest
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: smtp-password
+              key: latest
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          timeoutSeconds: 240
+          periodSeconds: 240
+          failureThreshold: 1
+          tcpSocket:
+            port: 8080
+
+      # --- Stunnel Sidecar 容器 ---
+      - name: stunnel-sidecar
+        image: dweomer/stunnel
+        volumeMounts:
+        - name: stunnel-conf-vol
+          mountPath: /etc/stunnel
+        command: ["stunnel", "/etc/stunnel/stunnel.conf"]
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+
+      volumes:
+      - name: stunnel-conf-vol
+        secret:
+          secretName: stunnel-config
+          items:
+          - key: latest
+            path: stunnel.conf

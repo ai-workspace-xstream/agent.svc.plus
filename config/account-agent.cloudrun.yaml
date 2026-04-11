@@ -1,0 +1,30 @@
+mode: "agent"
+
+log:
+  level: info
+
+agent:
+  id: "cloud-run-agent"
+  controllerUrl: "https://accounts.svc.plus"
+  apiToken: "PLACEHOLDER" # Will be overridden by INTERNAL_SERVICE_TOKEN env var
+  httpTimeout: 15s
+  statusInterval: 1m
+  syncInterval: 5m
+  tls:
+    insecureSkipVerify: false
+
+xray:
+  sync:
+    enabled: true
+    interval: 5m
+    targets:
+      - name: "xhttp"
+        outputPath: "/etc/xray/config.json"
+        templatePath: "config/xray.xhttp.template.json"
+        validateCommand: []
+        restartCommand: [] # Cloud Run sidecars use shared volumes, no need to restart service via systemctl
+      - name: "tcp"
+        outputPath: "/etc/xray/tcp-config.json"
+        templatePath: "config/xray.tcp.template.json"
+        validateCommand: []
+        restartCommand: []

@@ -1,0 +1,24 @@
+# Agent Svc Plus production deployment variables
+
+# Agent configuration
+agent_id: "us-xhttp.svc.plus"
+agent_controller_url: "https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
+# agent_api_token 从环境变量 INTERNAL_SERVICE_TOKEN 读取
+
+# Xray configuration
+xray_enabled: true
+xray_sync_interval: "5m"
+
+# Xray UUID (VLESS 协议)
+UUID: "d36834b7-7da3-4dbd-9906-cd0946b6b0cc"
+
+# Log configuration
+agent_log_level: "info"
+
+# Cloudflare DNS records
+cloudflare_dns_records:
+  - type: A
+    name: us-xhttp.svc.plus
+    content: 5.78.45.49
+    ttl: 300
+    proxied: false

@@ -1,0 +1,7 @@
+CONTROLLER_BASE_URL="https://accounts.svc.plus"
+
+# Optional: require this token from inbound Authorization Bearer / X-Service-Token.
+EDGE_ACCESS_TOKEN="replace-with-edge-token"
+
+# Optional: override outbound Authorization/X-Service-Token to controller.
+FORCE_SERVICE_TOKEN="replace-with-controller-service-token"

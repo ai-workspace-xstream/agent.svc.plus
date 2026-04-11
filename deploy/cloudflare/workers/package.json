@@ -1,0 +1,13 @@
+{
+  "name": "agent-svc-plus-edge-worker",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^4.2.0"
+  }
+}
