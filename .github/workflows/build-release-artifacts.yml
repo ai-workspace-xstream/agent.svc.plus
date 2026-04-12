@@ -39,10 +39,12 @@ jobs:
       - name: Prepare dispatch metadata
         id: meta
         run: |
-          echo "target_host=${{ github.event.inputs.target_host || 'jp-xhttp-contabo.svc.plus' }}" >> "$GITHUB_OUTPUT"
-          echo "run_apply=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_apply || 'false' }}" >> "$GITHUB_OUTPUT"
-          echo "git_commit_short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
-          echo "build_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          {
+            echo "target_host=${{ github.event.inputs.target_host || 'jp-xhttp-contabo.svc.plus' }}"
+            echo "run_apply=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_apply || 'false' }}"
+            echo "git_commit_short=$(git rev-parse --short=12 HEAD)"
+            echo "build_date=$(date -u +%Y-%m-%d)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Show plan
         run: |
