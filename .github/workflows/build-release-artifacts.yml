@@ -129,6 +129,7 @@ jobs:
       TARGET_HOST: ${{ needs.prep.outputs.target_host }}
       RUN_APPLY: ${{ needs.prep.outputs.run_apply }}
       INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
+      SSH_PRIVATE_KEY_FILE: /tmp/deploy_ssh_key
       AGENT_TLS_CERT_NAME: jp-xhttp.svc.plus
       AGENT_VARS_FILE: deploy/ansible/vars/agent_svc_plus.yml
       ANSIBLE_CONFIG: deploy/ansible/ansible.cfg
@@ -164,6 +165,13 @@ jobs:
           cat > .github/tmp/playbooks/inventory.ini <<EOF
           [agent_svc_plus]
           ${TARGET_HOST} ansible_host=${TARGET_HOST} ansible_user=root
+
+          [all:vars]
+          ansible_port=22
+          ansible_user=root
+          ansible_host_key_checking=False
+          ansible_ssh_common_args='-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+          ansible_ssh_private_key_file=${SSH_PRIVATE_KEY_FILE}
           EOF
           cd .github/tmp/playbooks
           AGENT_TLS_CERT_NAME="${AGENT_TLS_CERT_NAME}" \
@@ -256,7 +264,7 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
         run: |
           if [ -z "${SSH_PRIVATE_KEY}" ]; then
-            echo "Missing repository secret: DEPLOY_SSH_PRIVATE_KEY"
+            echo "Missing repository/org secret: DEPLOY_SSH_PRIVATE_KEY"
             exit 1
           fi
           mkdir -p "$(dirname "${SSH_PRIVATE_KEY_FILE}")"
