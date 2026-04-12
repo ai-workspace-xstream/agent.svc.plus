@@ -1,0 +1,7 @@
+name = "agent-svc-plus-edge"
+main = "src/index.js"
+compatibility_date = "2026-02-19"
+
+[vars]
+# Controller base URL that serves /api/agent-server/v1/*
+CONTROLLER_BASE_URL = "https://accounts.svc.plus"

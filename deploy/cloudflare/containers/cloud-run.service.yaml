@@ -1,0 +1,39 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: agent-svc-plus-runtime
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "20"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 10
+      timeoutSeconds: 300
+      containers:
+      - image: REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/agent-svc-plus-runtime:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AGENT_ID
+          value: "hk-xhttp.svc.plus"
+        - name: AGENT_CONTROLLER_URL
+          value: "https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
+        - name: AGENT_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: agent-api-token
+              key: latest
+        startupProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+          failureThreshold: 60
+          periodSeconds: 2
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          failureThreshold: 3
+          periodSeconds: 10
