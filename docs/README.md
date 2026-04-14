@@ -13,6 +13,7 @@ This `docs/` directory now has a bilingual canonical layer for the current repos
 ## Canonical Bilingual Pages / 双语规范页
 
 - `docs/en/architecture.md` / `docs/zh/architecture.md`
+- `docs/en/api-reference.md` / `docs/zh/api-reference.md`
 - `docs/en/design.md` / `docs/zh/design.md`
 - `docs/en/deployment.md` / `docs/zh/deployment.md`
 - `docs/en/user-guide.md` / `docs/zh/user-guide.md`

@@ -7,6 +7,7 @@ This matrix tracks the bilingual canonical documentation set for `agent.svc.plus
 | Category | EN | ZH | Current status | Existing references | Next check |
 | --- | --- | --- | --- | --- | --- |
 | Architecture | Yes | Yes | Seeded from current codebase; deeper legacy consolidation is still needed. | None yet; use the new canonical page as the starting point. | Keep diagrams and ownership notes synchronized with actual directories, services, and integration dependencies. |
+| API Reference | Yes | Yes | Added as the code-level reference layer for exported runtime APIs and controller/billing contracts. | Source of truth is the current Go code under `cmd/` and `internal/`. | Re-run export coverage checks when packages, signatures, fields, or controller/billing paths change. |
 | Design | Yes | Yes | Seeded from current codebase and existing docs. | `design.md` | Promote one-off implementation notes into reusable design records when behavior, APIs, or deployment contracts change. |
 | Deployment | Yes | Yes | Seeded from current codebase and existing docs. | `mcp-ssh-manager-setup.md` | Verify deployment steps against current scripts, manifests, CI/CD flow, and environment contracts before each release. |
 | User Guide | Yes | Yes | Seeded from current codebase; deeper legacy consolidation is still needed. | None yet; use the new canonical page as the starting point. | Prefer workflow-oriented examples and keep screenshots or terminal snippets aligned with the latest UI or CLI behavior. |

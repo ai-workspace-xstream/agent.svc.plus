@@ -11,6 +11,7 @@ Use this page to document local setup, project structure, test surfaces, and con
 - Manifest and build evidence: go.mod (`agent.svc.plus`)
 - Primary implementation and ops directories: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
 - Package scripts snapshot: `deploy`
+- Code symbol reference lives in [API Reference](api-reference.md); this page stays focused on development workflow and contribution context.
 
 ## Existing docs to reconcile
 

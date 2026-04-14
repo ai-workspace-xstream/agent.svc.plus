@@ -11,6 +11,7 @@
 - 构建与运行依据: go.mod (`agent.svc.plus`)
 - 主要实现与运维目录: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
 - `package.json` 脚本快照: `deploy`
+- 代码符号级说明位于 [API 参考](api-reference.md)；本页继续聚焦开发流程、协作约定与工程上下文。
 
 ## 需要继续归并的现有文档
 

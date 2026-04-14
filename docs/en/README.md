@@ -7,11 +7,12 @@ This repository mixes a Go runtime agent with supporting deployment automation a
 - Root README title: `Agent Service Plus`
 - Build/runtime evidence: go.mod (`agent.svc.plus`)
 - Primary directories detected: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
-- Existing docs count: 2
+- Existing docs count: 7
 
 ## Canonical pages
 
 - [Architecture](architecture.md)
+- [API Reference](api-reference.md)
 - [Design](design.md)
 - [Deployment](deployment.md)
 - [User Guide](user-guide.md)
