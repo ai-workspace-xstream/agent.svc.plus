@@ -7,11 +7,12 @@
 - 根 README 标题: `Agent Service Plus`
 - 构建与运行时证据: go.mod (`agent.svc.plus`)
 - 自动识别的主要目录: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
-- 现有文档数量: 2
+- 现有文档数量: 7
 
 ## 核心双语文档
 
 - [架构](architecture.md)
+- [API 参考](api-reference.md)
 - [设计](design.md)
 - [部署](deployment.md)
 - [使用手册](user-guide.md)
