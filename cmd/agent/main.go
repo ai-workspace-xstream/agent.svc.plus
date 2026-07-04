@@ -1,63 +1,79 @@
 package main
 
 import (
-	"context"
-	"flag"
 	"fmt"
-	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
+	"path/filepath"
 
-	"agent.svc.plus/internal/agentmode"
-	"agent.svc.plus/internal/config"
+	caddycmd "github.com/caddyserver/caddy/v2/cmd"
+
+	"agent.svc.plus/internal/caddyembed"
+	"agent.svc.plus/internal/xrayembed"
+
+	// Register Caddy's standard modules + our plugin set for the `caddy`
+	// personality. Xray's modules are registered inside the xrayembed
+	// package via its own blank import.
+	_ "github.com/caddy-dns/alidns"
+	_ "github.com/caddy-dns/cloudflare"
+	_ "github.com/caddyserver/caddy/v2/modules/standard"
+	_ "github.com/mholt/caddy-l4"
 )
 
+// This binary is a k3s-style multicall executable. A single compiled file
+// carries three "personalities" — the agent supervisor, an embedded Xray,
+// and an embedded Caddy — and picks one at startup from either the invoked
+// name (argv[0], via symlink) or the first subcommand. That lets the release
+// ship one artifact plus two symlinks instead of three separate binaries,
+// while keeping `xray ...` / `caddy ...` invocations working unchanged for
+// existing scripts and systemd units.
 var (
-	serviceName = "agent-svc-plus"
-	gitCommit   = "unknown"
-	buildDate   = "unknown"
+	serviceName  = "agent-svc-plus"
+	gitCommit    = "unknown"
+	buildDate    = "unknown"
+	caddyVersion = "unknown"
+	xrayVersion  = "unknown"
 )
 
 func main() {
-	configPath := flag.String("config", "account-agent.yaml", "path to configuration file")
-	showVersion := flag.Bool("v", false, "print version information and exit")
-	flag.Parse()
-
-	if *showVersion {
-		fmt.Printf("%s %s %s\n", serviceName, gitCommit, buildDate)
+	// 1. argv[0] dispatch (symlink personalities): /usr/local/bin/xray and
+	//    /usr/local/bin/caddy can both be symlinks to this binary.
+	switch filepath.Base(os.Args[0]) {
+	case "xray":
+		xrayembed.RunCLI()
+		return
+	case "caddy":
+		caddycmd.Main()
 		return
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		logger.Error("failed to load configuration", "path", *configPath, "err", err)
-		os.Exit(1)
+	// 2. Subcommand dispatch: `agent xray ...`, `agent caddy ...`.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "xray":
+			// Shift argv so the delegated CLI sees itself as os.Args[0].
+			os.Args = append([]string{"xray"}, os.Args[2:]...)
+			xrayembed.RunCLI()
+			return
+		case "caddy":
+			os.Args = append([]string{"caddy"}, os.Args[2:]...)
+			caddycmd.Main()
+			return
+		case "version", "-v", "--version":
+			printVersion()
+			return
+		case "server", "run", "agent":
+			os.Args = append(os.Args[:1], os.Args[2:]...)
+			runAgent()
+			return
+		}
 	}
 
-	if cfg.Mode != "agent" {
-		logger.Error("invalid run mode", "expected", "agent", "got", cfg.Mode)
-		os.Exit(1)
-	}
+	// 3. Default personality: the agent supervisor.
+	runAgent()
+}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
-	logger.Info("starting agent", "id", cfg.Agent.ID)
-
-	opts := agentmode.Options{
-		Logger:  logger,
-		Agent:   cfg.Agent,
-		Xray:    cfg.Xray,
-		Billing: cfg.Billing,
-	}
-
-	if err := agentmode.Run(ctx, opts); err != nil {
-		logger.Error("agent runtime failed", "err", err)
-		os.Exit(1)
-	}
-
-	logger.Info("agent shutdown complete")
+func printVersion() {
+	fmt.Printf("%s %s %s\n", serviceName, gitCommit, buildDate)
+	fmt.Printf("caddy=%s (linked %s)\n", caddyVersion, caddyembed.Version())
+	fmt.Printf("xray=%s (linked %s)\n", xrayVersion, xrayembed.Version())
 }

@@ -14,7 +14,21 @@ type Config struct {
 	Log     Log     `yaml:"log"`
 	Agent   Agent   `yaml:"agent"`
 	Xray    Xray    `yaml:"xray"`
+	Caddy   Caddy   `yaml:"caddy"`
 	Billing Billing `yaml:"billing"`
+}
+
+// Caddy configures the embedded (in-process) Caddy instance. When Embedded
+// is true, the supervisor runs Caddy as a library goroutine instead of
+// shelling out to a separate caddy process/systemd unit. Left zero, the
+// agent keeps the legacy external-process behaviour.
+type Caddy struct {
+	Embedded     bool   `yaml:"embedded"`
+	DNSProvider  string `yaml:"dnsProvider"`  // "cloudflare" | "alidns"
+	DNSAPIToken  string `yaml:"dnsApiToken"`  // cloudflare
+	AliKeyID     string `yaml:"aliKeyId"`     // alidns
+	AliKeySecret string `yaml:"aliKeySecret"` // alidns
+	XHTTPSocket  string `yaml:"xhttpSocket"`  // unix socket shared with embedded xhttp Xray
 }
 
 type Log struct {
@@ -42,7 +56,12 @@ type TLS struct {
 }
 
 type Xray struct {
-	Sync XraySync `yaml:"sync"`
+	// Embedded runs Xray inbounds as in-process core.Instances instead of
+	// writing config files and restarting an external xray service. Sync
+	// targets still describe the inbounds; their ValidateCommand /
+	// RestartCommand are ignored in embedded mode.
+	Embedded bool     `yaml:"embedded"`
+	Sync     XraySync `yaml:"sync"`
 }
 
 type Billing struct {
