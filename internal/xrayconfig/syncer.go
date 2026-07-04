@@ -2,11 +2,14 @@ package xrayconfig
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,6 +42,9 @@ type PeriodicSyncer struct {
 	restartCommand  []string
 	runner          commandRunner
 	onSync          func(SyncResult)
+
+	mu       sync.Mutex
+	lastHash string
 }
 
 // SyncResult describes the outcome of a synchronization attempt.
@@ -46,6 +52,7 @@ type SyncResult struct {
 	Clients     int
 	Error       error
 	CompletedAt time.Time
+	Changed     bool
 }
 
 // NewPeriodicSyncer constructs a new PeriodicSyncer from the provided options.
@@ -148,9 +155,28 @@ func (s *PeriodicSyncer) sync(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("list clients: %w", err)
 	}
+
+	renderedBuf, err := s.generator.Render(clients)
+	if err != nil {
+		return 0, fmt.Errorf("render config: %w", err)
+	}
+
+	currentHash := sha256Hex(renderedBuf)
+
+	s.mu.Lock()
+	previousHash := s.lastHash
+	s.mu.Unlock()
+
+	if previousHash != "" && currentHash == previousHash {
+		s.logger.Info("xray config unchanged, skipping write and restart", "clients", len(clients), "hash", currentHash[:12])
+		s.notify(SyncResult{Clients: len(clients), Changed: false, CompletedAt: time.Now().UTC()})
+		return len(clients), nil
+	}
+
 	if err := s.generator.Generate(clients); err != nil {
 		return 0, fmt.Errorf("generate config: %w", err)
 	}
+
 	if len(s.validateCommand) > 0 {
 		if err := s.runCommand(ctx, s.validateCommand, "validate config"); err != nil {
 			return 0, err
@@ -161,6 +187,11 @@ func (s *PeriodicSyncer) sync(ctx context.Context) (int, error) {
 			return 0, err
 		}
 	}
+
+	s.mu.Lock()
+	s.lastHash = currentHash
+	s.mu.Unlock()
+
 	return len(clients), nil
 }
 
@@ -191,4 +222,9 @@ func defaultCommandRunner(ctx context.Context, cmd []string) ([]byte, error) {
 	}
 	c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 	return c.CombinedOutput()
+}
+
+func sha256Hex(b []byte) string {
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
 }
