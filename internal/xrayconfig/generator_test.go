@@ -1,6 +1,7 @@
 package xrayconfig
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -41,5 +42,68 @@ func TestGeneratorRenderUsesEmailAsStatsKey(t *testing.T) {
 	rendered := string(buf)
 	if !strings.Contains(rendered, `"email": "2cc7f0b2-69f5-4b02-beb5-df4dd62be7b1"`) {
 		t.Fatalf("expected rendered config to include stats email key, got %s", rendered)
+	}
+}
+
+func TestGeneratorRenderUpdatesClientsInAnyInbound(t *testing.T) {
+	definition := JSONDefinition{Raw: []byte(`{
+		"inbounds": [
+			{
+				"listen": "127.0.0.1",
+				"port": 8080,
+				"protocol": "dokodemo-door",
+				"settings": {
+					"address": "127.0.0.1"
+				},
+				"tag": "api"
+			},
+			{
+				"listen": "/dev/shm/xray.sock,0666",
+				"protocol": "vless",
+				"settings": {
+					"clients": [
+						{
+							"id": "{{ UUID }}"
+						}
+					],
+					"decryption": "none"
+				},
+				"streamSettings": {
+					"network": "xhttp"
+				}
+			}
+		]
+	}`)}
+
+	generator := Generator{
+		Definition: definition,
+		Domain:     "node-a.svc.plus",
+	}
+
+	buf, err := generator.Render([]Client{
+		{ID: "client-1", Email: "a@example.com"},
+		{ID: "client-2", Email: "b@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("render config: %v", err)
+	}
+
+	var rendered struct {
+		Inbounds []struct {
+			Settings map[string]any `json:"settings"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal(buf, &rendered); err != nil {
+		t.Fatalf("decode rendered config: %v", err)
+	}
+	if len(rendered.Inbounds) != 2 {
+		t.Fatalf("expected 2 inbounds, got %d", len(rendered.Inbounds))
+	}
+	clients, ok := rendered.Inbounds[1].Settings["clients"].([]any)
+	if !ok {
+		t.Fatalf("expected inbound 1 clients array, got %#v", rendered.Inbounds[1].Settings["clients"])
+	}
+	if len(clients) != 2 {
+		t.Fatalf("expected 2 clients in second inbound, got %d", len(clients))
 	}
 }
