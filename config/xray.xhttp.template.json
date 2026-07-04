@@ -4,6 +4,7 @@
     },
     "inbounds": [
         {
+            "tag": "vless-in",
             "listen": "/dev/shm/xray.sock,0666",
             "protocol": "vless",
             "settings": {

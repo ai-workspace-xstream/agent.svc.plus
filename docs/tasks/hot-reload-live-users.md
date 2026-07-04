@@ -1,6 +1,8 @@
 # Research — Xray config hot-reload with minimal disconnection
 
-Status: **research → landable design**. Relates to M1 (`xrayembed.Runner.Apply`)
+Status: **IMPLEMENTED** in `internal/xrayembed/runner.go` (classify-then-reload)
++ `config/xray.{xhttp,tcp}.template.json` (added `"tag":"vless-in"`). Tests in
+`internal/xrayembed/runner_test.go`. Relates to M1 (`xrayembed.Runner.Apply`)
 and M2 (stats). Investigated against vendored `third_party/xray-core@v1.260327.0`.
 
 ## Problem
