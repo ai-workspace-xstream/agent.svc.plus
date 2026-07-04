@@ -1,0 +1,134 @@
+---
+- name: Update Cloudflare DNS records for agent-svc-plus
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    cloudflare_zone_name: svc.plus
+    cloudflare_api_base: https://api.cloudflare.com/client/v4
+  vars_files:
+    - "{{ lookup('ansible.builtin.env', 'AGENT_VARS_FILE') | default('../vars/agent_svc_plus.yml', true) }}"
+
+  tasks:
+    - name: Validate Cloudflare token is present
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.env', 'CLOUDFLARE_API_TOKEN') | length > 0
+        fail_msg: "CLOUDFLARE_API_TOKEN must be exported before running this playbook."
+
+    - name: Resolve Cloudflare zone id
+      ansible.builtin.uri:
+        url: "{{ cloudflare_api_base }}/zones?name={{ cloudflare_zone_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('ansible.builtin.env', 'CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+        return_content: true
+      register: cloudflare_zone_lookup
+
+    - name: Validate zone lookup result
+      ansible.builtin.assert:
+        that:
+          - cloudflare_zone_lookup.json.success
+          - cloudflare_zone_lookup.json.result | length > 0
+        fail_msg: "Unable to resolve Cloudflare zone id for {{ cloudflare_zone_name }}."
+
+    - name: Set Cloudflare zone id
+      ansible.builtin.set_fact:
+        cloudflare_zone_id: "{{ cloudflare_zone_lookup.json.result[0].id }}"
+
+    - name: Show zone permissions for current token
+      ansible.builtin.debug:
+        msg: "Cloudflare token permissions for {{ cloudflare_zone_name }}: {{ cloudflare_zone_lookup.json.result[0].permissions | default([]) }}"
+
+    - name: Fail early when token does not have DNS edit permission
+      ansible.builtin.assert:
+        that:
+          - "'#zone:read' in (cloudflare_zone_lookup.json.result[0].permissions | default([]))"
+          - "'#dns_records:edit' in (cloudflare_zone_lookup.json.result[0].permissions | default([]))"
+        fail_msg: >-
+          CLOUDFLARE_API_TOKEN is valid but lacks DNS edit permission for {{ cloudflare_zone_name }}.
+          Current permissions: {{ cloudflare_zone_lookup.json.result[0].permissions | default([]) }}.
+          Required: Zone read + DNS edit on the svc.plus zone.
+
+    - name: Query existing DNS records
+      ansible.builtin.uri:
+        url: "{{ cloudflare_api_base }}/zones/{{ cloudflare_zone_id }}/dns_records?name={{ item.name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('ansible.builtin.env', 'CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+        return_content: true
+      loop: "{{ cloudflare_dns_records }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: cloudflare_record_queries
+
+    - name: Remove conflicting DNS records with same name but different type
+      ansible.builtin.uri:
+        url: "{{ cloudflare_api_base }}/zones/{{ cloudflare_zone_id }}/dns_records/{{ item.1.id }}"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ lookup('ansible.builtin.env', 'CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+      loop: "{{ cloudflare_record_queries.results | subelements('json.result', skip_missing=True) }}"
+      loop_control:
+        label: "{{ item.0.item.name }} delete {{ item.1.type }}"
+      when: item.1.type != item.0.item.type
+
+    - name: Create missing DNS records
+      ansible.builtin.uri:
+        url: "{{ cloudflare_api_base }}/zones/{{ cloudflare_zone_id }}/dns_records"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ lookup('ansible.builtin.env', 'CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+        body_format: raw
+        body: >-
+          {{
+            {
+              'type': item.item.type,
+              'name': item.item.name,
+              'content': item.item.content,
+              'ttl': (item.item.ttl | default(1) | int),
+              'proxied': (item.item.proxied | default(false) | bool)
+            } | to_json
+          }}
+      loop: "{{ cloudflare_record_queries.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: (item.json.result | selectattr('type', 'equalto', item.item.type) | list | length) == 0
+
+    - name: Update existing DNS records when content differs
+      ansible.builtin.uri:
+        url: "{{ cloudflare_api_base }}/zones/{{ cloudflare_zone_id }}/dns_records/{{ (item.json.result | selectattr('type', 'equalto', item.item.type) | list | first).id }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ lookup('ansible.builtin.env', 'CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+        body_format: raw
+        body: >-
+          {{
+            {
+              'type': item.item.type,
+              'name': item.item.name,
+              'content': item.item.content,
+              'ttl': (item.item.ttl | default(1) | int),
+              'proxied': (item.item.proxied | default(false) | bool)
+            } | to_json
+          }}
+      loop: "{{ cloudflare_record_queries.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when:
+        - item.json.result | length > 0
+        - item.json.result[0].content != item.item.content
+          or item.json.result[0].type != item.item.type
+          or (item.json.result[0].proxied | default(false)) != (item.item.proxied | default(false))
+
+    - name: Show managed DNS records
+      ansible.builtin.debug:
+        msg: "{{ item.type }} {{ item.name }} -> {{ item.content }} proxied={{ item.proxied | default(false) }}"
+      loop: "{{ cloudflare_dns_records }}"
+      loop_control:
+        label: "{{ item.name }}"

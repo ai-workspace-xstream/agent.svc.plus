@@ -1,0 +1,17 @@
+---
+- name: Restart agent-svc-plus
+  ansible.builtin.systemd:
+    name: "{{ agent_svc_plus_service_name }}"
+    state: restarted
+    daemon_reload: true
+
+- name: Reload agent-svc-plus
+  ansible.builtin.systemd:
+    name: "{{ agent_svc_plus_service_name }}"
+    state: reloaded
+
+- name: Restart xray-exporter
+  ansible.builtin.systemd:
+    name: "{{ xray_exporter_service_name }}"
+    state: restarted
+    daemon_reload: true
