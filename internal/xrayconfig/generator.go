@@ -144,44 +144,44 @@ func updateClients(root map[string]interface{}, clients []Client) error {
 	// 1. Update Inbounds (Server side)
 	if inboundsValue, ok := root["inbounds"]; ok {
 		if inboundsSlice, ok := inboundsValue.([]interface{}); ok && len(inboundsSlice) > 0 {
-			// Try to find the inbound with clients settings (VLESS/VMess)
-			// For backward compatibility and simplicity, we check the first one or loop?
-			// The original code only targeted index 0. Let's try to be smart but conservative.
-			// If index 0 has settings.clients, we update it.
-			if inbound, ok := inboundsSlice[0].(map[string]interface{}); ok {
-				if settings, ok := inbound["settings"].(map[string]interface{}); ok {
-					if _, ok := settings["clients"]; ok {
-						// Found it, update it
-						newClients := make([]interface{}, 0, len(clients))
-						for _, c := range clients {
-							entry := map[string]interface{}{"id": c.ID}
-							if c.Email != "" {
-								entry["email"] = c.Email
-							}
-							// Add flow if needed (for TCP vision), check streamSettings if possible or just add default?
-							// Original code conditionally added flow.
-							// But since we are reusing this for client config too, let's keep it simple.
-							// Check if network is xhttp to exclude flow?
-							includeFlow := true
-							if ss, ok := inbound["streamSettings"].(map[string]interface{}); ok {
-								if net, _ := ss["network"].(string); net == "xhttp" {
-									includeFlow = false
-								}
-							}
-							if includeFlow {
-								flow := c.Flow
-								if flow == "" {
-									flow = DefaultFlow
-								}
-								entry["flow"] = flow
-							}
-							newClients = append(newClients, entry)
-						}
-						settings["clients"] = newClients
-						inbound["settings"] = settings
-						inboundsSlice[0] = inbound // Assign back
-					}
+			for i, inboundValue := range inboundsSlice {
+				inbound, ok := inboundValue.(map[string]interface{})
+				if !ok {
+					continue
 				}
+				settings, ok := inbound["settings"].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if _, ok := settings["clients"]; !ok {
+					continue
+				}
+
+				newClients := make([]interface{}, 0, len(clients))
+				for _, c := range clients {
+					entry := map[string]interface{}{"id": c.ID}
+					if c.Email != "" {
+						entry["email"] = c.Email
+					}
+					// Only xhttp inbounds omit flow; TCP/VLESS inbounds keep it.
+					includeFlow := true
+					if ss, ok := inbound["streamSettings"].(map[string]interface{}); ok {
+						if net, _ := ss["network"].(string); net == "xhttp" {
+							includeFlow = false
+						}
+					}
+					if includeFlow {
+						flow := c.Flow
+						if flow == "" {
+							flow = DefaultFlow
+						}
+						entry["flow"] = flow
+					}
+					newClients = append(newClients, entry)
+				}
+				settings["clients"] = newClients
+				inbound["settings"] = settings
+				inboundsSlice[i] = inbound
 			}
 			root["inbounds"] = inboundsSlice
 		}
