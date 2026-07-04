@@ -73,9 +73,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install xcaddy
-        run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.5
-
       - name: Build agent-svc-plus
         env:
           CGO_ENABLED: "0"
@@ -87,29 +84,16 @@ jobs:
           mkdir -p dist
           go build -trimpath -ldflags="-s -w -X main.serviceName=agent-svc-plus -X main.gitCommit=${GIT_COMMIT} -X main.buildDate=${BUILD_DATE}" -o dist/agent-svc-plus ./cmd/agent
 
-      - name: Build custom caddy
-        env:
-          CGO_ENABLED: "0"
-          GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          mkdir -p dist
-          "$(go env GOPATH)/bin/xcaddy" build v2.11.1 \
-            --with github.com/caddy-dns/cloudflare \
-            --with github.com/caddy-dns/alidns \
-            --with github.com/mholt/caddy-l4 \
-            --output dist/caddy
-
       - name: Prepare bundle
         run: |
           mkdir -p bundle/config release-assets
           cp dist/agent-svc-plus bundle/agent-svc-plus
-          cp dist/caddy bundle/caddy
+          ln -s agent-svc-plus bundle/xray
+          ln -s agent-svc-plus bundle/caddy
           cp account-agent.yaml bundle/account-agent.yaml
           cp config/*.template.json bundle/config/
           tar -czf "release-assets/artifact-${{ matrix.goarch }}-${{ needs.prep.outputs.git_commit_short }}.tar.gz" -C bundle .
           cp dist/agent-svc-plus "release-assets/agent-svc-plus-linux-${{ matrix.goarch }}"
-          cp dist/caddy "release-assets/caddy-linux-${{ matrix.goarch }}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
@@ -319,7 +303,5 @@ jobs:
         run: |
           test -f release-assets/agent-svc-plus-linux-amd64
           test -f release-assets/agent-svc-plus-linux-arm64
-          test -f release-assets/caddy-linux-amd64
-          test -f release-assets/caddy-linux-arm64
           test -f "release-assets/artifact-amd64-${EXPECTED_BUILD_COMMIT}.tar.gz"
           test -f "release-assets/artifact-arm64-${EXPECTED_BUILD_COMMIT}.tar.gz"

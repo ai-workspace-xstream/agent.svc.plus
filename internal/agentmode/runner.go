@@ -20,6 +20,7 @@ type Options struct {
 	Logger  *slog.Logger
 	Agent   config.Agent
 	Xray    config.Xray
+	Caddy   config.Caddy
 	Billing config.Billing
 }
 
