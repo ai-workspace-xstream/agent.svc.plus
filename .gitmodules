@@ -1,0 +1,6 @@
+[submodule "third_party/caddy"]
+	path = third_party/caddy
+	url = https://github.com/caddyserver/caddy.git
+[submodule "third_party/xray-core"]
+	path = third_party/xray-core
+	url = https://github.com/XTLS/Xray-core.git
