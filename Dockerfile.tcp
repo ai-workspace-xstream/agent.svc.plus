@@ -1,0 +1,4 @@
+FROM ghcr.io/xtls/xray-core:26.2.6
+# Standard xray-core image is sufficient for TCP
+ENTRYPOINT ["xray"]
+CMD ["run", "-config", "/usr/local/etc/xray/tcp-config.json"]

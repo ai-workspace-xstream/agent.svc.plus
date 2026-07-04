@@ -1,0 +1,36 @@
+mode: "agent"
+
+log:
+  level: info
+
+agent:
+  id: "edge-node-1"
+  controllerUrl: "https://accounts.svc.plus"
+  apiToken: "replace-with-agent-token"
+  httpTimeout: 15s
+  statusInterval: 1m
+  syncInterval: 5m
+  tls:
+    insecureSkipVerify: false
+
+xray:
+  sync:
+    enabled: true
+    interval: 5m
+    targets:
+      - name: "xhttp"
+        outputPath: "/usr/local/etc/xray/config.json"
+        templatePath: "config/xray.xhttp.template.json"
+        validateCommand: []
+        restartCommand:
+          - "systemctl"
+          - "restart"
+          - "xray.service"
+      - name: "tcp"
+        outputPath: "/usr/local/etc/xray/tcp-config.json"
+        templatePath: "config/xray.tcp.template.json"
+        validateCommand: []
+        restartCommand:
+          - "systemctl"
+          - "restart"
+          - "xray-tcp.service"

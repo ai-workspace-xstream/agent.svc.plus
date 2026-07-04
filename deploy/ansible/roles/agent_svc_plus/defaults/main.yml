@@ -1,0 +1,65 @@
+---
+# Agent-svc-plus deployment defaults
+
+# Binary configuration
+agent_svc_plus_binary_name: "agent-svc-plus"
+agent_svc_plus_binary_path: "/usr/local/bin/{{ agent_svc_plus_binary_name }}"
+
+# Service configuration
+agent_svc_plus_service_name: "agent-svc-plus"
+agent_svc_plus_user: "root"
+agent_svc_plus_group: "root"
+
+# Directory configuration
+agent_svc_plus_config_dir: "/etc/agent"
+agent_svc_plus_config_file: "account-agent.yaml"
+agent_svc_plus_config_path: "{{ agent_svc_plus_config_dir }}/{{ agent_svc_plus_config_file }}"
+agent_svc_plus_log_dir: "/var/log/agent-svc-plus"
+agent_svc_plus_data_dir: "/opt/agent.svc.plus"
+
+# Agent configuration
+agent_id: "us-xhttp.svc.plus"
+agent_node_id: "{{ agent_id }}"
+agent_region: ""
+agent_line_code: ""
+agent_pricing_group: ""
+agent_controller_url: "https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
+agent_api_token: ""
+agent_http_timeout: "15s"
+agent_status_interval: "1m"
+agent_sync_interval: "5m"
+agent_tls_insecure_skip_verify: false
+
+# Xray configuration
+xray_enabled: true
+xray_sync_interval: "5m"
+xray_config_path: "/usr/local/etc/xray/config.json"
+xray_tcp_config_path: "/usr/local/etc/xray/tcp-config.json"
+xray_template_dir: "/usr/local/etc/xray/templates"
+
+# Billing / reconciliation configuration
+billing_enabled: false
+billing_service_base_url: ""
+billing_http_timeout: "15s"
+billing_collect_interval: "1m"
+billing_reconcile_interval: "5m"
+
+# Xray exporter deployment (co-deployed with agent playbook)
+xray_exporter_enabled: true
+xray_exporter_binary_name: "xray-exporter"
+xray_exporter_binary_path: "/usr/local/bin/{{ xray_exporter_binary_name }}"
+xray_exporter_binary_src: "{{ lookup('ansible.builtin.env', 'XRAY_EXPORTER_BINARY_SRC') }}"
+xray_exporter_service_name: "xray-exporter"
+xray_exporter_config_dir: "/etc/xray-exporter"
+xray_exporter_config_path: "{{ xray_exporter_config_dir }}/xray-exporter.env"
+xray_exporter_stats_url: "http://127.0.0.1:10085/debug/vars"
+xray_exporter_stats_token: ""
+xray_exporter_accounts_base_url: "{{ agent_controller_url }}"
+xray_exporter_internal_service_token: "{{ agent_api_token }}"
+xray_exporter_node_id: "{{ agent_node_id }}"
+xray_exporter_env: "prod"
+xray_exporter_scrape_interval: "1m"
+xray_exporter_listen_addr: "127.0.0.1:9108"
+
+# Log configuration
+agent_log_level: "info"

@@ -1,0 +1,49 @@
+mode: "agent"
+
+log:
+  level: {{ agent_log_level }}
+
+agent:
+  id: "{{ agent_id }}"
+  nodeId: "{{ agent_node_id }}"
+  region: "{{ agent_region }}"
+  lineCode: "{{ agent_line_code }}"
+  pricingGroup: "{{ agent_pricing_group }}"
+  controllerUrl: "{{ agent_controller_url }}"
+  apiToken: "{{ agent_api_token }}"
+  httpTimeout: {{ agent_http_timeout }}
+  statusInterval: {{ agent_status_interval }}
+  syncInterval: {{ agent_sync_interval }}
+  tls:
+    insecureSkipVerify: {{ agent_tls_insecure_skip_verify | lower }}
+
+billing:
+  enabled: {{ billing_enabled | lower }}
+  baseURL: "{{ billing_service_base_url }}"
+  httpTimeout: {{ billing_http_timeout }}
+  collectInterval: {{ billing_collect_interval }}
+  reconcileInterval: {{ billing_reconcile_interval }}
+
+{% if xray_enabled %}
+xray:
+  sync:
+    enabled: true
+    interval: {{ xray_sync_interval }}
+    targets:
+      - name: "xhttp"
+        outputPath: "{{ xray_config_path }}"
+        templatePath: "{{ xray_template_dir }}/xray.xhttp.template.json"
+        validateCommand: []
+        restartCommand:
+          - "systemctl"
+          - "restart"
+          - "xray.service"
+      - name: "tcp"
+        outputPath: "{{ xray_tcp_config_path }}"
+        templatePath: "{{ xray_template_dir }}/xray.tcp.template.json"
+        validateCommand: []
+        restartCommand:
+          - "systemctl"
+          - "restart"
+          - "xray-tcp.service"
+{% endif %}

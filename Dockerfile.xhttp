@@ -1,0 +1,14 @@
+FROM golang:1.23-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -v -o agent-svc-plus ./cmd/agent
+
+FROM alpine:latest
+WORKDIR /app
+RUN apk --no-cache add ca-certificates
+COPY --from=builder /app/agent-svc-plus .
+# Configs will be mounted from GCS to /etc/agent/
+ENTRYPOINT ["/app/agent-svc-plus"]
+CMD ["-config", "/etc/agent/account-agent.yaml"]
