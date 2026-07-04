@@ -12,6 +12,7 @@ Read order and dependency:
 | [M2](M2-embed-exporter.md) | Read per-tenant traffic from the in-process Xray StatsManager; retire the `:10085` scrape + separate exporter unit | M1 | planned |
 | [M3](M3-runtime-modes.md) | `runtime.mode` switch: standalone/VPS vs Cloud Run vs Cloudflare Containers (edge-TLS) | M1 | planned |
 | [M4](M4-wireguard-inbound.md) | WireGuard access path alongside VLESS under the same tenant/UUID + accounting model | M2 | exploratory |
+| [Hot-reload](hot-reload-live-users.md) | Live user add/remove so tenant churn no longer drops connections (supersedes M1's full-rebuild `Apply`) | M1 | research → landable |
 
 Cross-refs:
 - Platform context & responsibility boundaries: [../architecture/xstream-platform-plan.md](../architecture/xstream-platform-plan.md)
