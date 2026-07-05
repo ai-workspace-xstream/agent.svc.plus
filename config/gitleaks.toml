@@ -1,0 +1,38 @@
+# Gitleaks configuration file
+# For more information, see https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''vendor/''',
+    '''node_modules/''',
+    '''\.env\.example$''',
+    '''\.env\.test$''',
+    '''go\.sum$''',
+    '''package-lock\.json$''',
+]
+stopwords = [
+    "example",
+    "placeholder",
+    "test-password",
+]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(api_key|apikey|secret|password|token)[-|_| ]*[=|\:][-|_| ]*['|"]([0-9a-zA-Z]{16,128})['|"]'''
+description_id = "potential_secret"
+entropy = 3.5
+keywords = ["api_key", "apikey", "secret", "password", "token"]
+
+[[rules]]
+id = "github-pat"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[0-9a-zA-Z]{36}'''
+keywords = ["ghp_"]
+
+[[rules]]
+id = "google-oauth-client-secret"
+description = "Google OAuth Client Secret"
+regex = '''(?i)client_secret[-|_| ]*[=|\:][-|_| ]*['|"]([0-9a-zA-Z\-_]{24})['|"]'''
+keywords = ["client_secret"]

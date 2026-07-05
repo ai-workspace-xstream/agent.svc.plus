@@ -1,0 +1,3 @@
+#!/bin/bash
+# Git pre-push hook
+./scripts/hooks/run-gitleaks.sh full

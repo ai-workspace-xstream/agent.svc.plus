@@ -1,0 +1,325 @@
+name: Build Release Artifacts
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target_host:
+        description: Ansible host or alias
+        required: false
+        default: "jp-xhttp-contabo.svc.plus"
+        type: string
+      run_apply:
+        description: Apply deployment
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  prep:
+    name: Prep
+    runs-on: ubuntu-latest
+    outputs:
+      target_host: ${{ steps.meta.outputs.target_host }}
+      run_apply: ${{ steps.meta.outputs.run_apply }}
+      git_commit_short: ${{ steps.meta.outputs.git_commit_short }}
+      build_date: ${{ steps.meta.outputs.build_date }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: Prepare dispatch metadata
+        id: meta
+        run: |
+          {
+            echo "target_host=${{ github.event.inputs.target_host || 'jp-xhttp-contabo.svc.plus' }}"
+            echo "run_apply=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_apply || 'false' }}"
+            echo "git_commit_short=$(git rev-parse --short=12 HEAD)"
+            echo "build_date=$(date -u +%Y-%m-%d)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Show plan
+        run: |
+          echo "Target host: ${{ steps.meta.outputs.target_host }}"
+          echo "Apply deployment: ${{ steps.meta.outputs.run_apply }}"
+          echo "Git commit: ${{ steps.meta.outputs.git_commit_short }}"
+          echo "Build date: ${{ steps.meta.outputs.build_date }}"
+
+  build:
+    name: Build (${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    needs: prep
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+          - goarch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: Setup Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
+        with:
+          go-version-file: go.mod
+
+      - name: Install xcaddy
+        run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.5
+
+      - name: Build agent-svc-plus
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GIT_COMMIT: ${{ needs.prep.outputs.git_commit_short }}
+          BUILD_DATE: ${{ needs.prep.outputs.build_date }}
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w -X main.serviceName=agent-svc-plus -X main.gitCommit=${GIT_COMMIT} -X main.buildDate=${BUILD_DATE}" -o dist/agent-svc-plus ./cmd/agent
+
+      - name: Build custom caddy
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          "$(go env GOPATH)/bin/xcaddy" build v2.11.3 \
+            --with github.com/caddy-dns/cloudflare \
+            --with github.com/caddy-dns/alidns \
+            --with github.com/mholt/caddy-l4 \
+            --output dist/caddy
+
+      - name: Prepare bundle
+        run: |
+          mkdir -p bundle/config release-assets
+          cp dist/agent-svc-plus bundle/agent-svc-plus
+          cp dist/caddy bundle/caddy
+          cp account-agent.yaml bundle/account-agent.yaml
+          cp config/*.template.json bundle/config/
+          tar -czf "release-assets/artifact-${{ matrix.goarch }}-${{ needs.prep.outputs.git_commit_short }}.tar.gz" -C bundle .
+          cp dist/agent-svc-plus "release-assets/agent-svc-plus-linux-${{ matrix.goarch }}"
+          cp dist/caddy "release-assets/caddy-linux-${{ matrix.goarch }}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: release-assets-${{ matrix.goarch }}-${{ needs.prep.outputs.git_commit_short }}
+          path: release-assets/
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+      - prep
+      - build
+    runs-on: ubuntu-latest
+    env:
+      TARGET_HOST: ${{ needs.prep.outputs.target_host }}
+      RUN_APPLY: ${{ needs.prep.outputs.run_apply }}
+      INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
+      SSH_PRIVATE_KEY_FILE: /tmp/deploy_ssh_key
+      AGENT_TLS_CERT_NAME: jp-xhttp.svc.plus
+      AGENT_VARS_FILE: deploy/ansible/vars/agent_svc_plus.yml
+      ANSIBLE_CONFIG: deploy/ansible/ansible.cfg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: Download release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Install Ansible
+        if: env.RUN_APPLY == 'true'
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install ansible
+
+      - name: Validate secret
+        if: env.RUN_APPLY == 'true'
+        run: |
+          if [ -z "${INTERNAL_SERVICE_TOKEN}" ]; then
+            echo "Missing repository secret: INTERNAL_SERVICE_TOKEN"
+            exit 1
+          fi
+
+      - name: Deploy
+        if: env.RUN_APPLY == 'true'
+        run: |
+          git clone --depth 1 https://github.com/x-evor/playbooks.git .github/tmp/playbooks
+          cat > .github/tmp/playbooks/inventory.ini <<EOF
+          [agent_svc_plus]
+          ${TARGET_HOST} ansible_host=${TARGET_HOST} ansible_user=root
+
+          [all:vars]
+          ansible_port=22
+          ansible_user=root
+          ansible_host_key_checking=False
+          ansible_ssh_common_args='-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+          ansible_ssh_private_key_file=${SSH_PRIVATE_KEY_FILE}
+          EOF
+          cd .github/tmp/playbooks
+          AGENT_TLS_CERT_NAME="${AGENT_TLS_CERT_NAME}" \
+          ansible-playbook -i inventory.ini deploy_agent_svc_plus.yml -D -C -l "${TARGET_HOST}" -e INTERNAL_SERVICE_TOKEN="${INTERNAL_SERVICE_TOKEN}"
+
+      - name: Skip deploy
+        if: env.RUN_APPLY != 'true'
+        run: echo "run_apply is false; deployment stage completed as a no-op."
+
+  publish:
+    name: Publish Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
+
+          gh release upload "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            release-assets/* \
+            --clobber
+
+  validate:
+    name: Validate
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+      - prep
+      - build
+      - deploy
+    runs-on: ubuntu-latest
+    env:
+      TARGET_HOST: ${{ needs.prep.outputs.target_host }}
+      RUN_APPLY: ${{ needs.prep.outputs.run_apply }}
+      EXPECTED_BUILD_COMMIT: ${{ needs.prep.outputs.git_commit_short }}
+      INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
+      SSH_PRIVATE_KEY_FILE: /tmp/deploy_ssh_key
+      AGENT_VARS_FILE: deploy/ansible/vars/agent_svc_plus.yml
+      ANSIBLE_CONFIG: deploy/ansible/ansible.cfg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: Download release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify build artifact names
+        if: env.RUN_APPLY == 'true'
+        run: |
+          test -f "release-assets/artifact-amd64-${EXPECTED_BUILD_COMMIT}.tar.gz"
+          test -f "release-assets/artifact-arm64-${EXPECTED_BUILD_COMMIT}.tar.gz"
+
+      - name: Install Ansible
+        if: env.RUN_APPLY == 'true'
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install ansible
+
+      - name: Validate secret
+        if: env.RUN_APPLY == 'true'
+        run: |
+          if [ -z "${INTERNAL_SERVICE_TOKEN}" ]; then
+            echo "Missing repository secret: INTERNAL_SERVICE_TOKEN"
+            exit 1
+          fi
+
+      - name: Install SSH private key
+        if: env.RUN_APPLY == 'true'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "${SSH_PRIVATE_KEY}" ]; then
+            echo "Missing repository/org secret: DEPLOY_SSH_PRIVATE_KEY"
+            exit 1
+          fi
+          mkdir -p "$(dirname "${SSH_PRIVATE_KEY_FILE}")"
+          install -d -m 700 /home/runner/.ssh
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_PRIVATE_KEY_FILE}"
+          chmod 600 "${SSH_PRIVATE_KEY_FILE}"
+
+      - name: Build ad-hoc inventory
+        if: env.RUN_APPLY == 'true'
+        run: |
+          mkdir -p .github/tmp
+          cat > .github/tmp/inventory.ci.ini <<EOF
+          [agent_svc_plus]
+          ${TARGET_HOST} ansible_host=${TARGET_HOST} ansible_user=root
+
+          [all:vars]
+          ansible_port=22
+          ansible_host_key_checking=False
+          ansible_ssh_common_args='-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+          ansible_ssh_private_key_file=${SSH_PRIVATE_KEY_FILE}
+          EOF
+
+      - name: Run remote validation
+        if: env.RUN_APPLY == 'true'
+        run: |
+          export AGENT_VARS_FILE="${AGENT_VARS_FILE}"
+          git clone --depth 1 https://github.com/x-evor/playbooks.git .github/tmp/playbooks
+          ansible-playbook -i .github/tmp/inventory.ci.ini .github/tmp/playbooks/deploy_agent_svc_plus.yml \
+            -D -C \
+            -l "${TARGET_HOST}" \
+            --private-key "${SSH_PRIVATE_KEY_FILE}" \
+            -e "INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}"
+
+      - name: Verify deployed binary version
+        if: env.RUN_APPLY == 'true'
+        run: |
+          remote_version="$(ssh -p 22 -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes root@"${TARGET_HOST}" '/usr/local/bin/agent-svc-plus -v' 2>/dev/null | tr -d '\r')"
+          echo "Remote version: ${remote_version}"
+          expected_prefix="agent-svc-plus ${EXPECTED_BUILD_COMMIT} "
+          case "${remote_version}" in
+            "${expected_prefix}"*)
+              ;;
+            *)
+              echo "Remote binary version does not match build commit"
+              echo "Expected prefix: ${expected_prefix}"
+              exit 1
+              ;;
+          esac
+
+      - name: Validate build artifacts
+        if: env.RUN_APPLY != 'true'
+        run: |
+          test -f release-assets/agent-svc-plus-linux-amd64
+          test -f release-assets/agent-svc-plus-linux-arm64
+          test -f release-assets/caddy-linux-amd64
+          test -f release-assets/caddy-linux-arm64
+          test -f "release-assets/artifact-amd64-${EXPECTED_BUILD_COMMIT}.tar.gz"
+          test -f "release-assets/artifact-arm64-${EXPECTED_BUILD_COMMIT}.tar.gz"

@@ -1,0 +1,12 @@
+[Unit]
+Description=Agent Service Plus
+After=network.target
+
+[Service]
+ExecStart={{ agent_svc_plus_binary_path }} -config {{ agent_svc_plus_config_path }}
+Restart=always
+User={{ agent_svc_plus_user }}
+WorkingDirectory={{ agent_svc_plus_data_dir }}
+
+[Install]
+WantedBy=multi-user.target
