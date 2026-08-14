@@ -1,0 +1,110 @@
+---
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0755"
+  loop:
+    - "{{ agent_svc_plus_config_dir }}"
+    - "{{ agent_svc_plus_data_dir }}"
+    - "{{ xray_template_dir }}"
+    - "{{ xray_exporter_config_dir }}"
+
+- name: Deploy agent binary
+  ansible.builtin.copy:
+    src: agent-svc-plus
+    dest: "{{ agent_svc_plus_binary_path }}"
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0755"
+  notify: Restart agent-svc-plus
+
+- name: Deploy agent configuration
+  ansible.builtin.template:
+    src: agent-config.yaml.j2
+    dest: "{{ agent_svc_plus_config_path }}"
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0644"
+  notify: Restart agent-svc-plus
+
+- name: Deploy XHTTP template
+  ansible.builtin.template:
+    src: xray.xhttp.template.json.j2
+    dest: "{{ xray_template_dir }}/xray.xhttp.template.json"
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0644"
+  when: xray_enabled
+
+- name: Deploy TCP template
+  ansible.builtin.template:
+    src: xray.tcp.template.json.j2
+    dest: "{{ xray_template_dir }}/xray.tcp.template.json"
+    owner: "{{ agent_svc_plus_user }}"
+    group: "{{ agent_svc_plus_group }}"
+    mode: "0644"
+  when: xray_enabled
+
+- name: Deploy systemd service unit
+  ansible.builtin.template:
+    src: agent-svc-plus.service.j2
+    dest: "/etc/systemd/system/{{ agent_svc_plus_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart agent-svc-plus
+
+- name: Ensure xray-exporter binary source is provided when enabled
+  ansible.builtin.assert:
+    that:
+      - xray_exporter_binary_src | length > 0
+    fail_msg: "XRAY_EXPORTER_BINARY_SRC must point to a built xray-exporter binary when xray_exporter_enabled=true."
+  when: xray_exporter_enabled
+
+- name: Deploy xray-exporter binary
+  ansible.builtin.copy:
+    src: "{{ xray_exporter_binary_src }}"
+    dest: "{{ xray_exporter_binary_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart xray-exporter
+  when: xray_exporter_enabled
+
+- name: Deploy xray-exporter environment
+  ansible.builtin.template:
+    src: xray-exporter.env.j2
+    dest: "{{ xray_exporter_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart xray-exporter
+  when: xray_exporter_enabled
+
+- name: Deploy xray-exporter systemd service unit
+  ansible.builtin.template:
+    src: xray-exporter.service.j2
+    dest: "/etc/systemd/system/{{ xray_exporter_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart xray-exporter
+  when: xray_exporter_enabled
+
+- name: Enable and start agent-svc-plus
+  ansible.builtin.systemd:
+    name: "{{ agent_svc_plus_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable and start xray-exporter
+  ansible.builtin.systemd:
+    name: "{{ xray_exporter_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: xray_exporter_enabled

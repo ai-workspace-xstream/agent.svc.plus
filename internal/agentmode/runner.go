@@ -1,0 +1,283 @@
+package agentmode
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"agent.svc.plus/internal/agentproto"
+	"agent.svc.plus/internal/config"
+	"agent.svc.plus/internal/xrayconfig"
+)
+
+// Options configures the agent runtime.
+type Options struct {
+	Logger  *slog.Logger
+	Agent   config.Agent
+	Xray    config.Xray
+	Billing config.Billing
+}
+
+// Run launches the agent mode control loop. It blocks until the context is
+// cancelled or a fatal error occurs during setup.
+func Run(ctx context.Context, opts Options) error {
+	if ctx == nil {
+		return errors.New("context is required")
+	}
+
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	controllerURL := strings.TrimSpace(opts.Agent.ControllerURL)
+	if controllerURL == "" {
+		return errors.New("agent.controllerUrl is required")
+	}
+	token := strings.TrimSpace(opts.Agent.APIToken)
+	if token == "" {
+		return errors.New("agent.apiToken is required")
+	}
+
+	syncInterval := opts.Agent.SyncInterval
+	if syncInterval <= 0 {
+		syncInterval = opts.Xray.Sync.Interval
+	}
+	if syncInterval <= 0 {
+		syncInterval = 5 * time.Minute
+	}
+
+	statusInterval := opts.Agent.StatusInterval
+	if statusInterval <= 0 {
+		statusInterval = time.Minute
+	}
+
+	httpTimeout := opts.Agent.HTTPTimeout
+	if httpTimeout <= 0 {
+		httpTimeout = 15 * time.Second
+	}
+
+	if opts.Billing.Enabled {
+		billingTimeout := opts.Billing.HTTPTimeout
+		if billingTimeout <= 0 {
+			billingTimeout = httpTimeout
+		}
+		collectInterval := opts.Billing.CollectInterval
+		if collectInterval <= 0 {
+			collectInterval = time.Minute
+		}
+		reconcileInterval := opts.Billing.ReconcileInterval
+		if reconcileInterval <= 0 {
+			reconcileInterval = 5 * time.Minute
+		}
+
+		billingClient, err := NewBillingClient(opts.Billing.BaseURL, billingTimeout)
+		if err != nil {
+			return err
+		}
+		startBillingSchedulers(ctx, billingClient, billingScheduleConfig{
+			httpTimeout:       billingTimeout,
+			collectInterval:   collectInterval,
+			reconcileInterval: reconcileInterval,
+		}, logger)
+	}
+
+	client, err := NewClient(controllerURL, token, ClientOptions{
+		Timeout:            httpTimeout,
+		InsecureSkipVerify: opts.Agent.TLS.InsecureSkipVerify,
+		UserAgent:          buildUserAgent(opts.Agent.ID),
+		AgentID:            opts.Agent.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	tracker := newSyncTracker()
+	source := NewHTTPClientSource(client, tracker)
+
+	// If no targets are defined, fallback to the legacy single target.
+	targets := opts.Xray.Sync.Targets
+	if len(targets) == 0 {
+		if opts.Xray.Sync.OutputPath != "" {
+			targets = append(targets, config.SyncTarget{
+				Name:            "default",
+				OutputPath:      opts.Xray.Sync.OutputPath,
+				TemplatePath:    opts.Xray.Sync.TemplatePath,
+				ValidateCommand: opts.Xray.Sync.ValidateCommand,
+				RestartCommand:  opts.Xray.Sync.RestartCommand,
+			})
+		}
+	}
+
+	if len(targets) == 0 {
+		// Default to standard location if nothing is configured
+		targets = append(targets, config.SyncTarget{
+			Name:       "default",
+			OutputPath: "/usr/local/etc/xray/config.json",
+		})
+	}
+
+	stopFuncs := make([]func(context.Context) error, 0, len(targets))
+
+	// Start a syncer for each target
+	for _, target := range targets {
+		outputPath := strings.TrimSpace(target.OutputPath)
+		if outputPath == "" {
+			logger.Warn("skipping sync target with empty output path", "name", target.Name)
+			continue
+		}
+
+		generator := xrayconfig.Generator{
+			Definition: xrayconfig.DefaultDefinition(),
+			OutputPath: outputPath,
+			Domain:     opts.Agent.Domain,
+		}
+		if templatePath := strings.TrimSpace(target.TemplatePath); templatePath != "" {
+			payload, err := os.ReadFile(templatePath)
+			if err != nil {
+				return fmt.Errorf("load xray template %s: %w", templatePath, err)
+			}
+			generator.Definition = xrayconfig.JSONDefinition{Raw: append([]byte(nil), payload...)}
+		}
+
+		syncLogger := logger.With("component", "agent-xray-sync", "target", target.Name)
+		syncer, err := xrayconfig.NewPeriodicSyncer(xrayconfig.PeriodicOptions{
+			Logger:          syncLogger,
+			Interval:        syncInterval,
+			Source:          source,
+			Generator:       generator,
+			ValidateCommand: target.ValidateCommand,
+			RestartCommand:  target.RestartCommand,
+			OnSync: func(result xrayconfig.SyncResult) {
+				if result.Error != nil {
+					tracker.MarkError(result.Error, result.CompletedAt)
+					return
+				}
+				tracker.MarkSuccess(result.CompletedAt)
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		stopSync, err := syncer.Start(ctx)
+		if err != nil {
+			// Clean up already started syncers
+			for _, stop := range stopFuncs {
+				_ = stop(context.Background())
+			}
+			return err
+		}
+		stopFuncs = append(stopFuncs, stopSync)
+	}
+
+	defer func() {
+		waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		for _, stop := range stopFuncs {
+			if err := stop(waitCtx); err != nil {
+				logger.Warn("xray syncer shutdown", "err", err)
+			}
+		}
+	}()
+
+	reporterCtx, reporterCancel := context.WithCancel(ctx)
+	defer reporterCancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runStatusReporter(reporterCtx, client, tracker, opts.Agent, statusInterval, syncInterval, logger)
+	}()
+
+	<-ctx.Done()
+	reporterCancel()
+	wg.Wait()
+	return nil
+}
+
+func buildUserAgent(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "xcontrol-agent"
+	}
+	return fmt.Sprintf("xcontrol-agent/%s", id)
+}
+
+func runStatusReporter(ctx context.Context, client *Client, tracker *syncTracker, agent config.Agent, interval, syncInterval time.Duration, logger *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	send := func() {
+		snapshot := tracker.Snapshot()
+		report := buildStatusReport(agent, snapshot, syncInterval)
+		if err := client.ReportStatus(ctx, report); err != nil {
+			logger.Warn("failed to report agent status", "err", err)
+		}
+	}
+
+	send()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			send()
+		}
+	}
+}
+
+func buildStatusReport(agent config.Agent, snapshot trackerSnapshot, syncInterval time.Duration) agentproto.StatusReport {
+	healthy := snapshot.LastError == "" && !snapshot.LastSuccess.IsZero()
+
+	running := false
+	var lastSyncPtr *time.Time
+	if !snapshot.LastSuccess.IsZero() {
+		running = time.Since(snapshot.LastSuccess) <= 3*syncInterval
+		last := snapshot.LastSuccess
+		lastSyncPtr = &last
+	}
+
+	report := agentproto.StatusReport{
+		AgentID:      agent.ID,
+		Healthy:      healthy,
+		Message:      snapshot.LastError,
+		Users:        snapshot.Clients,
+		SyncRevision: snapshot.Revision,
+		Xray: agentproto.XrayStatus{
+			Running: running,
+			Clients: snapshot.Clients,
+			LastSync: func() *time.Time {
+				if lastSyncPtr == nil {
+					return nil
+				}
+				copy := *lastSyncPtr
+				return &copy
+			}(),
+			NodeID:       firstNonEmpty(strings.TrimSpace(agent.NodeID), strings.TrimSpace(agent.ID)),
+			Region:       strings.TrimSpace(agent.Region),
+			LineCode:     strings.TrimSpace(agent.LineCode),
+			PricingGroup: strings.TrimSpace(agent.PricingGroup),
+			StatsEnabled: agent.StatsEnabled,
+			XrayRevision: snapshot.Revision,
+		},
+	}
+
+	return report
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}

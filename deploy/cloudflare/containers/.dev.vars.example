@@ -1,0 +1,8 @@
+AGENT_ID="hk-xhttp.svc.plus"
+AGENT_CONTROLLER_URL="https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
+AGENT_API_TOKEN="replace-with-agent-token"
+
+# Backward-compatible aliases used when AGENT_* are not provided.
+DOMAIN="hk-xhttp.svc.plus"
+CONTROLLER_URL="https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
+INTERNAL_SERVICE_TOKEN="replace-with-agent-token"
