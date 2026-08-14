@@ -1,0 +1,41 @@
+mode: "agent"
+
+log:
+  level: info
+
+agent:
+  # Unique identifier for this agent node (e.g., "hk-xhttp.svc.plus", "us-tcp.svc.plus")
+  id: "hk-xhttp.svc.plus"
+  # URL of the accounts.svc.plus controller
+  controllerUrl: "https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
+  # Authentication token (shared across all agents, matches INTERNAL_SERVICE_TOKEN in accounts.svc.plus)
+  apiToken: "replace-with-agent-token"
+  httpTimeout: 15s
+  statusInterval: 1m
+  syncInterval: 5m
+  tls:
+    insecureSkipVerify: false
+
+xray:
+  sync:
+    enabled: true
+    interval: 5m
+    targets:
+      # XHTTP Transport Configuration
+      - name: "xhttp"
+        outputPath: "/usr/local/etc/xray/config.json"
+        templatePath: "/usr/local/etc/xray/templates/xray.xhttp.template.json"
+        validateCommand: []
+        restartCommand:
+          - "systemctl"
+          - "restart"
+          - "xray.service"
+      # TCP Transport Configuration
+      - name: "tcp"
+        outputPath: "/usr/local/etc/xray/tcp-config.json"
+        templatePath: "/usr/local/etc/xray/templates/xray.tcp.template.json"
+        validateCommand: []
+        restartCommand:
+          - "systemctl"
+          - "restart"
+          - "xray-tcp.service"
