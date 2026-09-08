@@ -1,14 +1,14 @@
-# Agent Service Plus Design & Architecture
+# XConnect Edge Agent Design & Architecture
 
 ## Overview
-`agent.svc.plus` is a lightweight control agent designed to run on a VM (Virtual Machine). It serves as the runtime for Xray, managing connectivity and configuration synchronization with the central `accounts.svc.plus` service while leaving traffic metric translation and billing to separate services.
+`xconnect-edge-agent` is a lightweight control agent designed to run on a VM (Virtual Machine). It serves as the runtime for Xray, managing connectivity and configuration synchronization with the central `accounts.svc.plus` service while leaving traffic metric translation and billing to separate services.
 
 ## Architecture
 
 *   **Runtime**: Native Binary (Go), running on VM (Systemd managed).
 *   **Proxy Core**: Xray (XTLS).
 *   **Web Server**: Caddy (with DNS plugins for ACME).
-*   **Orchestration**: `agent.svc.plus` binary.
+*   **Orchestration**: `xconnect-edge-agent` binary.
 
 ### Key Components
 

@@ -6,9 +6,9 @@ Use this page to consolidate design decisions, ADR-style tradeoffs, and roadmap-
 
 ## Current code-aligned notes
 
-- Documentation target: `agent.svc.plus`
+- Documentation target: `xconnect-edge-agent`
 - Repo kind: `hybrid-agent`
-- Manifest and build evidence: go.mod (`agent.svc.plus`)
+- Manifest and build evidence: go.mod (`xconnect-edge-agent`)
 - Primary implementation and ops directories: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
 - Package scripts snapshot: `deploy`
 

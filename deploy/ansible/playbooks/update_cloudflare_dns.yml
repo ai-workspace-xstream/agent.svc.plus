@@ -1,5 +1,5 @@
 ---
-- name: Update Cloudflare DNS records for agent-svc-plus
+- name: Update Cloudflare DNS records for xconnect-edge-agent
   hosts: localhost
   connection: local
   gather_facts: false
@@ -7,7 +7,7 @@
     cloudflare_zone_name: svc.plus
     cloudflare_api_base: https://api.cloudflare.com/client/v4
   vars_files:
-    - "{{ lookup('ansible.builtin.env', 'AGENT_VARS_FILE') | default('../vars/agent_svc_plus.yml', true) }}"
+    - "{{ lookup('ansible.builtin.env', 'AGENT_VARS_FILE') | default('../vars/xconnect_edge_agent.yml', true) }}"
 
   tasks:
     - name: Validate Cloudflare token is present

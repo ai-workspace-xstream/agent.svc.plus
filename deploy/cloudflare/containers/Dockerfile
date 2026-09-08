@@ -9,7 +9,7 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY deploy/cloudflare/containers/container-src/healthz ./deploy/cloudflare/containers/container-src/healthz
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/agent-svc-plus ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/xconnect-edge-agent ./cmd/agent
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/agent-healthz ./deploy/cloudflare/containers/container-src/healthz
 
 FROM debian:bookworm-slim
@@ -31,9 +31,9 @@ RUN curl -fsSL -o /tmp/xray.zip "https://github.com/XTLS/Xray-core/releases/down
     && install -m 0644 /tmp/xray/geosite.dat /usr/local/share/xray/geosite.dat \
     && rm -rf /tmp/xray /tmp/xray.zip
 
-RUN mkdir -p /etc/agent /usr/local/etc/xray/templates /usr/local/etc/xray /var/run/agent-svc-plus
+RUN mkdir -p /etc/agent /usr/local/etc/xray/templates /usr/local/etc/xray /var/run/xconnect-edge-agent
 
-COPY --from=builder /out/agent-svc-plus /usr/local/bin/agent-svc-plus
+COPY --from=builder /out/xconnect-edge-agent /usr/local/bin/xconnect-edge-agent
 COPY --from=builder /out/agent-healthz /usr/local/bin/agent-healthz
 
 # Xray config templates (agent syncs real configs from controller using these)
@@ -69,9 +69,9 @@ ENV XRAY_TCP_CONFIG_PATH=/usr/local/etc/xray/tcp-config.json
 ENV XRAY_TCP_BOOTSTRAP_PATH=/etc/agent/xray-tcp.bootstrap.json
 
 # PID files for process management
-ENV XRAY_PID_FILE=/var/run/agent-svc-plus/xray.pid
-ENV XRAY_TCP_PID_FILE=/var/run/agent-svc-plus/xray-tcp.pid
-ENV AGENT_PID_FILE=/var/run/agent-svc-plus/agent.pid
+ENV XRAY_PID_FILE=/var/run/xconnect-edge-agent/xray.pid
+ENV XRAY_TCP_PID_FILE=/var/run/xconnect-edge-agent/xray-tcp.pid
+ENV AGENT_PID_FILE=/var/run/xconnect-edge-agent/agent.pid
 
 # Health server port
 ENV HEALTH_PORT=8080

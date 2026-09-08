@@ -1,8 +1,8 @@
-# agent.svc.plus Proxy / Runtime Architecture
+# xconnect-edge-agent Proxy / Runtime Architecture
 
 ## Scope
 
-`agent.svc.plus` is the lightweight runtime control service that runs on a VM. It is not a traditional data service; it synchronizes Xray configuration, reports heartbeat/status, schedules reconciliation jobs, and bridges the node to `accounts.svc.plus`.
+`xconnect-edge-agent` is the lightweight runtime control service that runs on a VM. It is not a traditional data service; it synchronizes Xray configuration, reports heartbeat/status, schedules reconciliation jobs, and bridges the node to `accounts.svc.plus`.
 
 ## Architecture
 
@@ -58,7 +58,7 @@ flowchart TB
 
 ## Data / Storage Notes
 
-- `agent.svc.plus` does not own a persistent application database in the core runtime path.
+- `xconnect-edge-agent` does not own a persistent application database in the core runtime path.
 - Any persistence is externalized to the controller-side `accounts.svc.plus` tables, especially `agents`, `nodes`, and `users`.
 
 ## Notes

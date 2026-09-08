@@ -3,13 +3,13 @@ package agentproto
 import (
 	"time"
 
-	"agent.svc.plus/internal/xrayconfig"
+	"github.com/ai-workspace-xstream/xconnect-edge-agent/internal/xrayconfig"
 )
 
 // ClientListResponse represents the payload returned by the controller when an
 // agent requests the latest set of Xray clients.
 //
-// Refactored for agent.svc.plus to avoid cross-module dependency on account.
+// Refactored for xconnect-edge-agent to avoid cross-module dependency on account.
 type ClientListResponse struct {
 	Clients     []xrayconfig.Client `json:"clients"`
 	Total       int                 `json:"total"`

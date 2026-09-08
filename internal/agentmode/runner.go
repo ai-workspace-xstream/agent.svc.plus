@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"agent.svc.plus/internal/agentproto"
-	"agent.svc.plus/internal/config"
-	"agent.svc.plus/internal/xrayconfig"
+	"github.com/ai-workspace-xstream/xconnect-edge-agent/internal/agentproto"
+	"github.com/ai-workspace-xstream/xconnect-edge-agent/internal/config"
+	"github.com/ai-workspace-xstream/xconnect-edge-agent/internal/xrayconfig"
 )
 
 // Options configures the agent runtime.

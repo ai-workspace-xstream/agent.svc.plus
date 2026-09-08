@@ -7,7 +7,7 @@ This Worker provides a Cloudflare edge entrypoint for the agent protocol:
 - `POST /api/agent-server/v1/status`
 
 It is an edge proxy, not a replacement for the VM daemon. Xray config rendering,
-local file writes, and process restart stay on the host where `agent-svc-plus`
+local file writes, and process restart stay on the host where `xconnect-edge-agent`
 runs.
 
 ## 1) Install

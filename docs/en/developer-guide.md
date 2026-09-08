@@ -6,9 +6,9 @@ Use this page to document local setup, project structure, test surfaces, and con
 
 ## Current code-aligned notes
 
-- Documentation target: `agent.svc.plus`
+- Documentation target: `xconnect-edge-agent`
 - Repo kind: `hybrid-agent`
-- Manifest and build evidence: go.mod (`agent.svc.plus`)
+- Manifest and build evidence: go.mod (`xconnect-edge-agent`)
 - Primary implementation and ops directories: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
 - Package scripts snapshot: `deploy`
 - Code symbol reference lives in [API Reference](api-reference.md); this page stays focused on development workflow and contribution context.

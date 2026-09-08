@@ -1,11 +1,11 @@
-# Agent Service Plus Documentation
+# XConnect Edge Agent Documentation
 
 This repository mixes a Go runtime agent with supporting deployment automation and edge integration artifacts.
 
 ## Current state snapshot
 
-- Root README title: `Agent Service Plus`
-- Build/runtime evidence: go.mod (`agent.svc.plus`)
+- Root README title: `XConnect Edge Agent`
+- Build/runtime evidence: go.mod (`xconnect-edge-agent`)
 - Primary directories detected: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
 - Existing docs count: 7
 

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"agent.svc.plus/internal/agentproto"
+	"github.com/ai-workspace-xstream/xconnect-edge-agent/internal/agentproto"
 )
 
 // ClientOptions configures the HTTP client used to communicate with the

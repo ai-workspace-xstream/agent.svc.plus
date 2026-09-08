@@ -1,6 +1,6 @@
 # API Reference
 
-This page is the code-level reference layer for `agent.svc.plus`.
+This page is the code-level reference layer for `xconnect-edge-agent`.
 
 It is written for maintainers of this repository rather than for third-party Go consumers. Most runtime code lives under `internal/`, so these APIs are intentionally module-local. The goal of this page is to bridge the design layer and the code layer: package responsibilities, exported types, exported functions and methods, their parameters and return values, and the runtime call chain that ties them together.
 
@@ -13,7 +13,7 @@ In this repository, the user-facing shorthand maps to Go concepts as follows:
 
 ## Overview
 
-`agent.svc.plus` is a VM-side runtime agent. Its main path is:
+`xconnect-edge-agent` is a VM-side runtime agent. Its main path is:
 
 1. Load YAML and environment-backed runtime config
 2. Validate run mode

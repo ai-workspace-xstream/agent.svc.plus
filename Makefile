@@ -1,6 +1,6 @@
- BINARY_NAME=agent-svc-plus
+ BINARY_NAME=xconnect-edge-agent
 INSTALL_BIN=/usr/local/bin/$(BINARY_NAME)
-SERVICE_NAME=agent-svc-plus
+SERVICE_NAME=xconnect-edge-agent
 
 .PHONY: all build install upgrade cf-worker-install cf-worker-dev cf-worker-check cf-worker-deploy cf-containers-install cf-containers-dev cf-containers-check cf-containers-deploy
 

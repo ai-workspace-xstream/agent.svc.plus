@@ -3,7 +3,7 @@ set -e
 
 PROJECT_ID="xzerolab-480008"
 SERVICE_NAME="agent-combined-svc-plus"
-IMAGE_NAME="asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/agent.svc.plus/agent-svc-plus:latest"
+IMAGE_NAME="asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/xconnect-edge-agent/xconnect-edge-agent:latest"
 
 # 1. Build and Push Agent Image
 echo "Building and pushing agent image..."

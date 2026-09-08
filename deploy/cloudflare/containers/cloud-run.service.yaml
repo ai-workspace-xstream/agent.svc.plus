@@ -1,7 +1,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: agent-svc-plus-runtime
+  name: xconnect-edge-agent-runtime
 spec:
   template:
     metadata:
@@ -12,7 +12,7 @@ spec:
       containerConcurrency: 10
       timeoutSeconds: 300
       containers:
-      - image: REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/agent-svc-plus-runtime:latest
+      - image: REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/xconnect-edge-agent-runtime:latest
         ports:
         - containerPort: 8080
         env:

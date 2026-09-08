@@ -1,4 +1,4 @@
-# Agent Svc Plus production deployment variables
+# XConnect Edge Agent production deployment variables
 
 # Agent configuration
 agent_id: "us-xhttp.svc.plus"

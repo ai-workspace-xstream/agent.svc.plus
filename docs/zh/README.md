@@ -4,8 +4,8 @@
 
 ## 当前状态快照
 
-- 根 README 标题: `Agent Service Plus`
-- 构建与运行时证据: go.mod (`agent.svc.plus`)
+- 根 README 标题: `XConnect Edge Agent`
+- 构建与运行时证据: go.mod (`xconnect-edge-agent`)
 - 自动识别的主要目录: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
 - 现有文档数量: 7
 

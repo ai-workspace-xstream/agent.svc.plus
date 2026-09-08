@@ -1,10 +1,10 @@
 ---
-- name: Deploy agent-svc-plus
-  hosts: agent_svc_plus
+- name: Deploy xconnect-edge-agent
+  hosts: xconnect_edge_agent
   become: true
   gather_facts: true
   vars_files:
-    - "{{ lookup('ansible.builtin.env', 'AGENT_VARS_FILE') | default('../vars/agent_svc_plus.yml', true) }}"
+    - "{{ lookup('ansible.builtin.env', 'AGENT_VARS_FILE') | default('../vars/xconnect_edge_agent.yml', true) }}"
 
   pre_tasks:
     - name: Validate INTERNAL_SERVICE_TOKEN is present
@@ -46,7 +46,7 @@
         success_msg: "setup-proxy.sh config paths exist."
 
   roles:
-    - role: agent_svc_plus
+    - role: xconnect_edge_agent
 
   post_tasks:
     - name: Wait for service to start
@@ -54,7 +54,7 @@
         timeout: 5
 
     - name: Get service status
-      ansible.builtin.command: systemctl status {{ agent_svc_plus_service_name }}
+      ansible.builtin.command: systemctl status {{ xconnect_edge_agent_service_name }}
       register: service_status
       changed_when: false
       ignore_errors: true
@@ -67,8 +67,8 @@
       ansible.builtin.assert:
         that:
           - "'active (running)' in service_status.stdout"
-        fail_msg: "Agent service is not running"
-        success_msg: "Agent service is running"
+        fail_msg: "XConnect Edge Agent service is not running"
+        success_msg: "XConnect Edge Agent service is running"
 
     - name: Get xray-exporter service status
       ansible.builtin.command: systemctl status {{ xray_exporter_service_name }}

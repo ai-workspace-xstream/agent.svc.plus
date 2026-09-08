@@ -78,7 +78,7 @@ export default {
     if (url.pathname === "/healthz") {
       return json({
         ok: true,
-        service: "agent-svc-plus-edge",
+        service: "xconnect-edge-agent-edge",
         now: new Date().toISOString(),
       });
     }

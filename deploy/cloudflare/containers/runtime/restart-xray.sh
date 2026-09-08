@@ -5,10 +5,10 @@ SERVICE_UNIT="${1:-xray.service}"
 
 case "$SERVICE_UNIT" in
   xray.service)
-    PID_FILE="${XRAY_PID_FILE:-/var/run/agent-svc-plus/xray.pid}"
+    PID_FILE="${XRAY_PID_FILE:-/var/run/xconnect-edge-agent/xray.pid}"
     ;;
   xray-tcp.service)
-    PID_FILE="${XRAY_TCP_PID_FILE:-/var/run/agent-svc-plus/xray-tcp.pid}"
+    PID_FILE="${XRAY_TCP_PID_FILE:-/var/run/xconnect-edge-agent/xray-tcp.pid}"
     ;;
   *)
     echo "unsupported service: $SERVICE_UNIT" >&2

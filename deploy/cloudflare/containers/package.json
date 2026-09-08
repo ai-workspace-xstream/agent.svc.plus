@@ -1,5 +1,5 @@
 {
-  "name": "agent-svc-plus-cf-containers",
+  "name": "xconnect-edge-agent-cf-containers",
   "private": true,
   "version": "0.1.0",
   "type": "module",

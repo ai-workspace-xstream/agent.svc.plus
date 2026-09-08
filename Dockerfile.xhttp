@@ -3,12 +3,12 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -v -o agent-svc-plus ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=linux go build -v -o xconnect-edge-agent ./cmd/agent
 
 FROM alpine:latest
 WORKDIR /app
 RUN apk --no-cache add ca-certificates
-COPY --from=builder /app/agent-svc-plus .
+COPY --from=builder /app/xconnect-edge-agent .
 # Configs will be mounted from GCS to /etc/agent/
-ENTRYPOINT ["/app/agent-svc-plus"]
+ENTRYPOINT ["/app/xconnect-edge-agent"]
 CMD ["-config", "/etc/agent/account-agent.yaml"]
