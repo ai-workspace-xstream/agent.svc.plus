@@ -1,13 +1,13 @@
 # Agent Reconciliation Acceptance
 
-This document defines the execution and acceptance checklist for `agent.svc.plus`
+This document defines the execution and acceptance checklist for `xconnect-edge-agent`
 in the CRT-007 control plane.
 
 ## P0 Boundary Freeze
 
-- `agent.svc.plus` is scheduler / reconciler / future autoscaling executor only.
-- `agent.svc.plus` does not own usage or billing truth.
-- `agent.svc.plus` does not read Prometheus as a billing source.
+- `xconnect-edge-agent` is scheduler / reconciler / future autoscaling executor only.
+- `xconnect-edge-agent` does not own usage or billing truth.
+- `xconnect-edge-agent` does not read Prometheus as a billing source.
 
 ## P1 Scheduling Model
 
@@ -61,5 +61,5 @@ Checks:
 
 Suggested verification commands:
 
-- `cd /Users/shenlan/workspaces/cloud-neutral-toolkit/agent.svc.plus && go test ./...`
-- `cd /Users/shenlan/workspaces/cloud-neutral-toolkit/github-org-cloud-neutral-toolkit && rg -n "scheduler|reconciliation|billing-service|does not own billing truth" docs/operations-governance/cross-repo-tasks.md /Users/shenlan/workspaces/cloud-neutral-toolkit/agent.svc.plus/docs`
+- `cd /Users/shenlan/workspaces/cloud-neutral-toolkit/xconnect-edge-agent && go test ./...`
+- `cd /Users/shenlan/workspaces/cloud-neutral-toolkit/github-org-cloud-neutral-toolkit && rg -n "scheduler|reconciliation|billing-service|does not own billing truth" docs/operations-governance/cross-repo-tasks.md /Users/shenlan/workspaces/cloud-neutral-toolkit/xconnect-edge-agent/docs`

@@ -1,4 +1,4 @@
-module agent.svc.plus
+module github.com/ai-workspace-xstream/xconnect-edge-agent
 
 go 1.25.1
 

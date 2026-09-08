@@ -1,13 +1,13 @@
 ---
-- name: Restart agent-svc-plus
+- name: Restart xconnect-edge-agent
   ansible.builtin.systemd:
-    name: "{{ agent_svc_plus_service_name }}"
+    name: "{{ xconnect_edge_agent_service_name }}"
     state: restarted
     daemon_reload: true
 
-- name: Reload agent-svc-plus
+- name: Reload xconnect-edge-agent
   ansible.builtin.systemd:
-    name: "{{ agent_svc_plus_service_name }}"
+    name: "{{ xconnect_edge_agent_service_name }}"
     state: reloaded
 
 - name: Restart xray-exporter

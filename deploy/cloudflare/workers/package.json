@@ -1,5 +1,5 @@
 {
-  "name": "agent-svc-plus-edge-worker",
+  "name": "xconnect-edge-agent-edge-worker",
   "private": true,
   "version": "0.1.0",
   "scripts": {

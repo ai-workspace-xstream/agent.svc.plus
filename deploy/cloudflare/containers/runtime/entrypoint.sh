@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────────────
-# Container Entrypoint: agent-svc-plus + xray (XHTTP) + xray (TCP)
+# Container Entrypoint: xconnect-edge-agent + xray (XHTTP) + xray (TCP)
 #
 # Runs three long-lived processes under tini:
 #   1. agent-healthz         — HTTP health/readiness check server
 #   2. xray (XHTTP)          — VLESS+XHTTP inbound on /dev/shm/xray.sock
 #   3. xray (TCP)            — VLESS+TCP+TLS inbound on port 1443
-#   4. agent-svc-plus        — agent control plane (config sync, heartbeat)
+#   4. xconnect-edge-agent        — agent control plane (config sync, heartbeat)
 #
 # Configurable environment variables:
 #   AGENT_ID              — agent.id           (fallback: DOMAIN)
@@ -22,16 +22,16 @@ XRAY_CONFIG_PATH="${XRAY_CONFIG_PATH:-/usr/local/etc/xray/config.json}"
 XRAY_TCP_CONFIG_PATH="${XRAY_TCP_CONFIG_PATH:-/usr/local/etc/xray/tcp-config.json}"
 XRAY_BOOTSTRAP_PATH="${XRAY_BOOTSTRAP_PATH:-/etc/agent/xray.bootstrap.json}"
 XRAY_TCP_BOOTSTRAP_PATH="${XRAY_TCP_BOOTSTRAP_PATH:-/etc/agent/xray-tcp.bootstrap.json}"
-XRAY_PID_FILE="${XRAY_PID_FILE:-/var/run/agent-svc-plus/xray.pid}"
-XRAY_TCP_PID_FILE="${XRAY_TCP_PID_FILE:-/var/run/agent-svc-plus/xray-tcp.pid}"
-AGENT_PID_FILE="${AGENT_PID_FILE:-/var/run/agent-svc-plus/agent.pid}"
-XRAY_STOP_FILE="${XRAY_STOP_FILE:-/var/run/agent-svc-plus/xray.stop}"
+XRAY_PID_FILE="${XRAY_PID_FILE:-/var/run/xconnect-edge-agent/xray.pid}"
+XRAY_TCP_PID_FILE="${XRAY_TCP_PID_FILE:-/var/run/xconnect-edge-agent/xray-tcp.pid}"
+AGENT_PID_FILE="${AGENT_PID_FILE:-/var/run/xconnect-edge-agent/agent.pid}"
+XRAY_STOP_FILE="${XRAY_STOP_FILE:-/var/run/xconnect-edge-agent/xray.stop}"
 HEALTH_PORT="${HEALTH_PORT:-8080}"
 AGENT_ID="${AGENT_ID:-${DOMAIN:-}}"
 AGENT_CONTROLLER_URL="${AGENT_CONTROLLER_URL:-${CONTROLLER_URL:-}}"
 AGENT_API_TOKEN="${AGENT_API_TOKEN:-${INTERNAL_SERVICE_TOKEN:-}}"
 
-mkdir -p /etc/agent /usr/local/etc/xray /usr/local/etc/xray/templates /var/run/agent-svc-plus
+mkdir -p /etc/agent /usr/local/etc/xray /usr/local/etc/xray/templates /var/run/xconnect-edge-agent
 rm -f "$XRAY_STOP_FILE"
 
 # ── Copy config templates if not yet rendered ──
@@ -97,7 +97,7 @@ xray_loop() {
 # ── Start all processes ──
 
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║  agent-svc-plus Container Runtime                   ║"
+echo "║  xconnect-edge-agent Container Runtime                   ║"
 echo "╠══════════════════════════════════════════════════════╣"
 echo "║  Agent ID:      ${AGENT_ID:-<not set>}"
 echo "║  Controller:    ${AGENT_CONTROLLER_URL:-<not set>}"
@@ -119,7 +119,7 @@ xray_loop "$XRAY_TCP_CONFIG_PATH" "$XRAY_TCP_PID_FILE" "tcp" &
 XRAY_TCP_LOOP_PID=$!
 
 # 4. Agent control plane
-/usr/local/bin/agent-svc-plus -config "$AGENT_CONFIG_PATH" &
+/usr/local/bin/xconnect-edge-agent -config "$AGENT_CONFIG_PATH" &
 AGENT_PID=$!
 echo "$AGENT_PID" > "$AGENT_PID_FILE"
 

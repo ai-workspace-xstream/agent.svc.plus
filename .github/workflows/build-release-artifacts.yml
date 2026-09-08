@@ -76,7 +76,7 @@ jobs:
       - name: Install xcaddy
         run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.5
 
-      - name: Build agent-svc-plus
+      - name: Build xconnect-edge-agent
         env:
           CGO_ENABLED: "0"
           GOOS: linux
@@ -85,7 +85,7 @@ jobs:
           BUILD_DATE: ${{ needs.prep.outputs.build_date }}
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w -X main.serviceName=agent-svc-plus -X main.gitCommit=${GIT_COMMIT} -X main.buildDate=${BUILD_DATE}" -o dist/agent-svc-plus ./cmd/agent
+          go build -trimpath -ldflags="-s -w -X main.serviceName=xconnect-edge-agent -X main.gitCommit=${GIT_COMMIT} -X main.buildDate=${BUILD_DATE}" -o dist/xconnect-edge-agent ./cmd/agent
 
       - name: Build custom caddy
         env:
@@ -103,12 +103,12 @@ jobs:
       - name: Prepare bundle
         run: |
           mkdir -p bundle/config release-assets
-          cp dist/agent-svc-plus bundle/agent-svc-plus
+          cp dist/xconnect-edge-agent bundle/xconnect-edge-agent
           cp dist/caddy bundle/caddy
           cp account-agent.yaml bundle/account-agent.yaml
           cp config/*.template.json bundle/config/
           tar -czf "release-assets/artifact-${{ matrix.goarch }}-${{ needs.prep.outputs.git_commit_short }}.tar.gz" -C bundle .
-          cp dist/agent-svc-plus "release-assets/agent-svc-plus-linux-${{ matrix.goarch }}"
+          cp dist/xconnect-edge-agent "release-assets/xconnect-edge-agent-linux-${{ matrix.goarch }}"
           cp dist/caddy "release-assets/caddy-linux-${{ matrix.goarch }}"
 
       - name: Upload workflow artifact
@@ -131,7 +131,7 @@ jobs:
       INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
       SSH_PRIVATE_KEY_FILE: /tmp/deploy_ssh_key
       AGENT_TLS_CERT_NAME: jp-xhttp.svc.plus
-      AGENT_VARS_FILE: deploy/ansible/vars/agent_svc_plus.yml
+      AGENT_VARS_FILE: deploy/ansible/vars/xconnect_edge_agent.yml
       ANSIBLE_CONFIG: deploy/ansible/ansible.cfg
     steps:
       - name: Checkout
@@ -163,7 +163,7 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/x-evor/playbooks.git .github/tmp/playbooks
           cat > .github/tmp/playbooks/inventory.ini <<EOF
-          [agent_svc_plus]
+          [xconnect_edge_agent]
           ${TARGET_HOST} ansible_host=${TARGET_HOST} ansible_user=root
 
           [all:vars]
@@ -175,7 +175,7 @@ jobs:
           EOF
           cd .github/tmp/playbooks
           AGENT_TLS_CERT_NAME="${AGENT_TLS_CERT_NAME}" \
-          ansible-playbook -i inventory.ini deploy_agent_svc_plus.yml -D -C -l "${TARGET_HOST}" -e INTERNAL_SERVICE_TOKEN="${INTERNAL_SERVICE_TOKEN}"
+          ansible-playbook -i inventory.ini deploy_xconnect_edge_agent.yml -D -C -l "${TARGET_HOST}" -e INTERNAL_SERVICE_TOKEN="${INTERNAL_SERVICE_TOKEN}"
 
       - name: Skip deploy
         if: env.RUN_APPLY != 'true'
@@ -225,7 +225,7 @@ jobs:
       EXPECTED_BUILD_COMMIT: ${{ needs.prep.outputs.git_commit_short }}
       INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
       SSH_PRIVATE_KEY_FILE: /tmp/deploy_ssh_key
-      AGENT_VARS_FILE: deploy/ansible/vars/agent_svc_plus.yml
+      AGENT_VARS_FILE: deploy/ansible/vars/xconnect_edge_agent.yml
       ANSIBLE_CONFIG: deploy/ansible/ansible.cfg
     steps:
       - name: Checkout
@@ -277,7 +277,7 @@ jobs:
         run: |
           mkdir -p .github/tmp
           cat > .github/tmp/inventory.ci.ini <<EOF
-          [agent_svc_plus]
+          [xconnect_edge_agent]
           ${TARGET_HOST} ansible_host=${TARGET_HOST} ansible_user=root
 
           [all:vars]
@@ -292,7 +292,7 @@ jobs:
         run: |
           export AGENT_VARS_FILE="${AGENT_VARS_FILE}"
           git clone --depth 1 https://github.com/x-evor/playbooks.git .github/tmp/playbooks
-          ansible-playbook -i .github/tmp/inventory.ci.ini .github/tmp/playbooks/deploy_agent_svc_plus.yml \
+          ansible-playbook -i .github/tmp/inventory.ci.ini .github/tmp/playbooks/deploy_xconnect_edge_agent.yml \
             -D -C \
             -l "${TARGET_HOST}" \
             --private-key "${SSH_PRIVATE_KEY_FILE}" \
@@ -301,9 +301,9 @@ jobs:
       - name: Verify deployed binary version
         if: env.RUN_APPLY == 'true'
         run: |
-          remote_version="$(ssh -p 22 -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes root@"${TARGET_HOST}" '/usr/local/bin/agent-svc-plus -v' 2>/dev/null | tr -d '\r')"
+          remote_version="$(ssh -p 22 -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes root@"${TARGET_HOST}" '/usr/local/bin/xconnect-edge-agent -v' 2>/dev/null | tr -d '\r')"
           echo "Remote version: ${remote_version}"
-          expected_prefix="agent-svc-plus ${EXPECTED_BUILD_COMMIT} "
+          expected_prefix="xconnect-edge-agent ${EXPECTED_BUILD_COMMIT} "
           case "${remote_version}" in
             "${expected_prefix}"*)
               ;;
@@ -317,8 +317,8 @@ jobs:
       - name: Validate build artifacts
         if: env.RUN_APPLY != 'true'
         run: |
-          test -f release-assets/agent-svc-plus-linux-amd64
-          test -f release-assets/agent-svc-plus-linux-arm64
+          test -f release-assets/xconnect-edge-agent-linux-amd64
+          test -f release-assets/xconnect-edge-agent-linux-arm64
           test -f release-assets/caddy-linux-amd64
           test -f release-assets/caddy-linux-arm64
           test -f "release-assets/artifact-amd64-${EXPECTED_BUILD_COMMIT}.tar.gz"

@@ -1,4 +1,4 @@
-# Agent Service Plus / 节点代理服务
+# XConnect Edge Agent / 节点代理服务
 
 This `docs/` directory now has a bilingual canonical layer for the current repository state.
 
@@ -22,9 +22,9 @@ This `docs/` directory now has a bilingual canonical layer for the current repos
 
 ## Current Repo Context / 当前仓库背景
 
-- Root README: `Agent Service Plus`
+- Root README: `XConnect Edge Agent`
 - Previous docs index: `Documentation`
-- Manifest evidence / 构建清单: go.mod (`agent.svc.plus`)
+- Manifest evidence / 构建清单: go.mod (`xconnect-edge-agent`)
 - Active code and ops directories / 当前主要目录: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
 
 ## Existing Docs To Reconcile / 需要继续归并的现有文档

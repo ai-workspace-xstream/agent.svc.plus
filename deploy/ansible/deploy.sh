@@ -1,5 +1,5 @@
 #!/bin/bash
-# agent-svc-plus 部署脚本
+# xconnect-edge-agent 部署脚本
 # 使用方法: ./deploy.sh [--dns-only] [--deploy-only] [--prod|--inventory FILE]
 
 set -euo pipefail
@@ -20,7 +20,7 @@ fi
 DNS_ONLY=false
 DEPLOY_ONLY=false
 INVENTORY_FILE="$SCRIPT_DIR/inventory.ini"
-AGENT_VARS_FILE="$SCRIPT_DIR/vars/agent_svc_plus.yml"
+AGENT_VARS_FILE="$SCRIPT_DIR/vars/xconnect_edge_agent.yml"
 TARGET_ENVIRONMENT="inventory.ini"
 
 while [[ $# -gt 0 ]]; do
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --prod)
             INVENTORY_FILE="$SCRIPT_DIR/inventory.prod.ini"
-            AGENT_VARS_FILE="$SCRIPT_DIR/vars/agent_svc_plus.prod.yml"
+            AGENT_VARS_FILE="$SCRIPT_DIR/vars/xconnect_edge_agent.prod.yml"
             TARGET_ENVIRONMENT="production"
             shift
             ;;
@@ -71,13 +71,13 @@ HOST="$(inventory_target_host "$INVENTORY_FILE" || true)"
 SSH_USER="$(inventory_target_user "$INVENTORY_FILE" || true)"
 
 if [ -z "$HOST_ALIAS" ] || [ -z "$HOST" ]; then
-    echo "错误: inventory 未配置 agent_svc_plus 主机: $INVENTORY_FILE"
+    echo "错误: inventory 未配置 xconnect_edge_agent 主机: $INVENTORY_FILE"
     echo "请先填写 inventory 主机，或显式使用 --prod / --inventory。"
     exit 1
 fi
 
 echo ""
-echo "=== agent-svc-plus 部署 ==="
+echo "=== xconnect-edge-agent 部署 ==="
 echo "目标环境: $TARGET_ENVIRONMENT"
 echo "Inventory: $INVENTORY_FILE"
 echo "Vars: $AGENT_VARS_FILE"
@@ -110,17 +110,17 @@ if [ "$DEPLOY_ONLY" = false ]; then
 fi
 
 # 步骤 2: 部署 agent
-echo "=== 步骤 2/2: 部署 agent-svc-plus ==="
+echo "=== 步骤 2/2: 部署 xconnect-edge-agent ==="
 if [ -z "$INTERNAL_SERVICE_TOKEN" ]; then
     echo "错误: INTERNAL_SERVICE_TOKEN 未设置"
     echo "请导出环境变量: export INTERNAL_SERVICE_TOKEN=xxx"
     exit 1
 fi
 
-ansible-playbook -i "$INVENTORY_FILE" playbooks/deploy_agent_svc_plus.yml -v
+ansible-playbook -i "$INVENTORY_FILE" playbooks/deploy_xconnect_edge_agent.yml -v
 
 echo ""
 echo "=== 部署完成 ==="
 echo "验证命令:"
-echo "  ssh ${SSH_USER}@${HOST} 'systemctl status agent-svc-plus'"
-echo "  ssh ${SSH_USER}@${HOST} 'journalctl -u agent-svc-plus -f'"
+echo "  ssh ${SSH_USER}@${HOST} 'systemctl status xconnect-edge-agent'"
+echo "  ssh ${SSH_USER}@${HOST} 'journalctl -u xconnect-edge-agent -f'"

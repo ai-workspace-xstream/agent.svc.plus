@@ -3,39 +3,39 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    owner: "{{ agent_svc_plus_user }}"
-    group: "{{ agent_svc_plus_group }}"
+    owner: "{{ xconnect_edge_agent_user }}"
+    group: "{{ xconnect_edge_agent_group }}"
     mode: "0755"
   loop:
-    - "{{ agent_svc_plus_config_dir }}"
-    - "{{ agent_svc_plus_data_dir }}"
+    - "{{ xconnect_edge_agent_config_dir }}"
+    - "{{ xconnect_edge_agent_data_dir }}"
     - "{{ xray_template_dir }}"
     - "{{ xray_exporter_config_dir }}"
 
 - name: Deploy agent binary
   ansible.builtin.copy:
-    src: agent-svc-plus
-    dest: "{{ agent_svc_plus_binary_path }}"
-    owner: "{{ agent_svc_plus_user }}"
-    group: "{{ agent_svc_plus_group }}"
+    src: xconnect-edge-agent
+    dest: "{{ xconnect_edge_agent_binary_path }}"
+    owner: "{{ xconnect_edge_agent_user }}"
+    group: "{{ xconnect_edge_agent_group }}"
     mode: "0755"
-  notify: Restart agent-svc-plus
+  notify: Restart xconnect-edge-agent
 
 - name: Deploy agent configuration
   ansible.builtin.template:
     src: agent-config.yaml.j2
-    dest: "{{ agent_svc_plus_config_path }}"
-    owner: "{{ agent_svc_plus_user }}"
-    group: "{{ agent_svc_plus_group }}"
+    dest: "{{ xconnect_edge_agent_config_path }}"
+    owner: "{{ xconnect_edge_agent_user }}"
+    group: "{{ xconnect_edge_agent_group }}"
     mode: "0644"
-  notify: Restart agent-svc-plus
+  notify: Restart xconnect-edge-agent
 
 - name: Deploy XHTTP template
   ansible.builtin.template:
     src: xray.xhttp.template.json.j2
     dest: "{{ xray_template_dir }}/xray.xhttp.template.json"
-    owner: "{{ agent_svc_plus_user }}"
-    group: "{{ agent_svc_plus_group }}"
+    owner: "{{ xconnect_edge_agent_user }}"
+    group: "{{ xconnect_edge_agent_group }}"
     mode: "0644"
   when: xray_enabled
 
@@ -43,19 +43,19 @@
   ansible.builtin.template:
     src: xray.tcp.template.json.j2
     dest: "{{ xray_template_dir }}/xray.tcp.template.json"
-    owner: "{{ agent_svc_plus_user }}"
-    group: "{{ agent_svc_plus_group }}"
+    owner: "{{ xconnect_edge_agent_user }}"
+    group: "{{ xconnect_edge_agent_group }}"
     mode: "0644"
   when: xray_enabled
 
 - name: Deploy systemd service unit
   ansible.builtin.template:
-    src: agent-svc-plus.service.j2
-    dest: "/etc/systemd/system/{{ agent_svc_plus_service_name }}.service"
+    src: xconnect-edge-agent.service.j2
+    dest: "/etc/systemd/system/{{ xconnect_edge_agent_service_name }}.service"
     owner: root
     group: root
     mode: "0644"
-  notify: Restart agent-svc-plus
+  notify: Restart xconnect-edge-agent
 
 - name: Ensure xray-exporter binary source is provided when enabled
   ansible.builtin.assert:
@@ -94,9 +94,9 @@
   notify: Restart xray-exporter
   when: xray_exporter_enabled
 
-- name: Enable and start agent-svc-plus
+- name: Enable and start xconnect-edge-agent
   ansible.builtin.systemd:
-    name: "{{ agent_svc_plus_service_name }}"
+    name: "{{ xconnect_edge_agent_service_name }}"
     enabled: true
     state: started
     daemon_reload: true

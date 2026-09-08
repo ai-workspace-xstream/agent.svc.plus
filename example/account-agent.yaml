@@ -1,4 +1,4 @@
-# Agent Service Plus Configuration Template
+# XConnect Edge Agent Configuration Template
 # Copy this file to /etc/agent/account-agent.yaml and customize for your node
 
 mode: "agent"

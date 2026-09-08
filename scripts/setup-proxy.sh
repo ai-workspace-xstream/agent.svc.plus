@@ -7,16 +7,17 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${GREEN}Starting Agent Service Plus Installation...${NC}"
+echo -e "${GREEN}Starting XConnect Edge Agent Installation...${NC}"
 
 XRAY_TCP_USER="caddy"
 OPEN_STUNNEL_5443="${OPEN_STUNNEL_5443:-false}"
 STANDALONE_MODE=false
 STANDALONE_UUID_FILE="/usr/local/etc/xray/standalone.uuid"
-AGENT_DATA_DIR="${AGENT_DATA_DIR:-/opt/agent.svc.plus}"
+AGENT_DATA_DIR="${AGENT_DATA_DIR:-/opt/xconnect-edge-agent}"
+LEGACY_AGENT_SERVICE_NAME="agent-svc-plus"
 CLOUDFLARE_ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-svc.plus}"
 CLOUDFLARE_API_BASE="https://api.cloudflare.com/client/v4"
-GITHUB_REPO="${GITHUB_REPO:-cloud-neutral-toolkit/agent.svc.plus}"
+GITHUB_REPO="${GITHUB_REPO:-ai-workspace-xstream/xconnect-edge-agent}"
 AGENT_RELEASE_TAG="${AGENT_RELEASE_TAG:-v0.1.2}"
 AGENT_RELEASE_BASE_URL="https://github.com/${GITHUB_REPO}/releases"
 
@@ -75,12 +76,12 @@ install_prebuilt_runtime_bundle() {
 
     tar -xzf "${tmp_dir}/${asset_name}" -C "${tmp_dir}"
 
-    if [ ! -f "${tmp_dir}/agent-svc-plus" ] || [ ! -f "${tmp_dir}/caddy" ]; then
-        echo -e "${RED}Runtime bundle is missing required binaries (agent-svc-plus/caddy).${NC}"
+    if [ ! -f "${tmp_dir}/xconnect-edge-agent" ] || [ ! -f "${tmp_dir}/caddy" ]; then
+        echo -e "${RED}Runtime bundle is missing required binaries (xconnect-edge-agent/caddy).${NC}"
         exit 1
     fi
 
-    install -m 755 "${tmp_dir}/agent-svc-plus" /usr/local/bin/agent-svc-plus
+    install -m 755 "${tmp_dir}/xconnect-edge-agent" /usr/local/bin/xconnect-edge-agent
     install -m 755 "${tmp_dir}/caddy" /usr/bin/caddy
     rm -rf "${tmp_dir}"
 }
@@ -94,7 +95,7 @@ fetch_repo_archive() {
         "https://github.com/${GITHUB_REPO}/archive/refs/heads/main.tar.gz" \
         -o "${tmp_dir}/repo.tar.gz"
     tar -xzf "${tmp_dir}/repo.tar.gz" -C "${tmp_dir}"
-    extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -type d -name 'agent.svc.plus-*' | head -n 1)"
+    extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -type d -name 'xconnect-edge-agent-*' | head -n 1)"
 
     if [ -z "${extracted_dir}" ]; then
         echo -e "${RED}Failed to fetch repository archive for templates/config.${NC}"
@@ -320,29 +321,29 @@ Env (optional):
 
 Examples:
   # Supports AMD64 and ARM64 (aarch64)
-  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+  curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
     bash -s -- --node hk-xhttp.svc.plus
 
   AUTH_URL=https://accounts-svc-plus-266500572462.asia-northeast1.run.app \\
   INTERNAL_SERVICE_TOKEN=xxxx \\
-  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+  curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
     bash -s -- --node hk-xhttp.svc.plus
 
   # Upgrade binaries only (no config overwrite)
-  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+  curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
     bash -s -- --upgrade-only
 
   # Open 5443/tcp together with 80/443/1443 for stunnel(PostgreSQL) co-location
   OPEN_STUNNEL_5443=true \\
-  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+  curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
     bash -s -- --node jp-xhttp.svc.plus
 
   # Standalone self-host mode: installs caddy + xray only, generates UUID and prints import links
-  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+  curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
     bash -s -- --node jp-xhttp.svc.plus --standalone
 
   # Print detected architecture and download artifacts (no install)
-  curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \\
+  curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
     bash -s -- --print-arch
 EOF
 }
@@ -472,7 +473,7 @@ echo -e "${GREEN}[2/7] Installing Xray...${NC}"
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
 # 3. Runtime Bundle Installation
-echo -e "${GREEN}[3/7] Installing prebuilt runtime bundle (custom Caddy + agent-svc-plus)...${NC}"
+echo -e "${GREEN}[3/7] Installing prebuilt runtime bundle (custom Caddy + xconnect-edge-agent)...${NC}"
 
 ARCH_RAW="$(uname -m)"
 GOARCH="$(detect_goarch)"
@@ -588,9 +589,11 @@ print_standalone_links() {
 }
 
 disable_agent_service_if_present() {
-    if systemctl list-unit-files agent-svc-plus.service >/dev/null 2>&1; then
-        systemctl disable --now agent-svc-plus >/dev/null 2>&1 || true
-    fi
+    for service_name in xconnect-edge-agent "$LEGACY_AGENT_SERVICE_NAME"; do
+        if systemctl list-unit-files "${service_name}.service" >/dev/null 2>&1; then
+            systemctl disable --now "$service_name" >/dev/null 2>&1 || true
+        fi
+    done
 }
 
 # 4. Configuration Directories
@@ -611,6 +614,10 @@ done
 
 REPO_SOURCE_DIR="$(fetch_repo_archive)"
 
+# Stop both names during migration so an existing installation cannot report
+# the same node from two agent processes after the service rename.
+disable_agent_service_if_present
+
 if [ "$STANDALONE_MODE" = true ]; then
     echo -e "${GREEN}[5/7] Preparing standalone Xray configuration...${NC}"
     mkdir -p /usr/local/etc/xray/templates
@@ -620,8 +627,8 @@ if [ "$STANDALONE_MODE" = true ]; then
     echo "Standalone UUID: ${STANDALONE_UUID}"
 else
     # 5. Agent Installation
-    echo -e "${GREEN}[5/7] Installing/Updating Agent Service...${NC}"
-    echo "agent-svc-plus already installed from runtime bundle."
+    echo -e "${GREEN}[5/7] Installing/Updating XConnect Edge Agent...${NC}"
+    echo "xconnect-edge-agent already installed from runtime bundle."
 fi
 
 if [ "$UPGRADE_ONLY" = true ]; then
@@ -632,7 +639,7 @@ if [ "$UPGRADE_ONLY" = true ]; then
     systemctl restart xray-tcp || true
     systemctl restart caddy || true
     if [ "$STANDALONE_MODE" != true ]; then
-        systemctl restart agent-svc-plus || true
+        systemctl restart xconnect-edge-agent || true
     fi
 
     echo -e "${GREEN}Upgrade Complete!${NC}"
@@ -641,7 +648,7 @@ if [ "$UPGRADE_ONLY" = true ]; then
     echo -e "  - xray-tcp: $(systemctl is-active xray-tcp || echo unknown)"
     echo -e "  - caddy: $(systemctl is-active caddy || echo unknown)"
     if [ "$STANDALONE_MODE" != true ]; then
-        echo -e "  - agent-svc-plus: $(systemctl is-active agent-svc-plus || echo unknown)"
+        echo -e "  - xconnect-edge-agent: $(systemctl is-active xconnect-edge-agent || echo unknown)"
     fi
     if [ "$STANDALONE_MODE" = true ]; then
         print_standalone_links
@@ -735,7 +742,7 @@ ${DOMAIN} {
     }
 
     # Fallback/Default site content
-    respond "$( [ "$STANDALONE_MODE" = true ] && printf '%s' 'Standalone Xray Node' || printf '%s' 'Agent Service Plus Node' )"
+    respond "$( [ "$STANDALONE_MODE" = true ] && printf '%s' 'Standalone Xray Node' || printf '%s' 'XConnect Edge Agent' )"
 }
 
 import /etc/caddy/conf.d/*.caddy
@@ -850,14 +857,14 @@ WantedBy=multi-user.target
 EOF
 
 if [ "$STANDALONE_MODE" != true ]; then
-# Agent Service
-cat > /etc/systemd/system/agent-svc-plus.service <<EOF
+# XConnect Edge Agent service
+cat > /etc/systemd/system/xconnect-edge-agent.service <<EOF
 [Unit]
-Description=Agent Service Plus
+Description=XConnect Edge Agent
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/agent-svc-plus -config /etc/agent/account-agent.yaml
+ExecStart=/usr/local/bin/xconnect-edge-agent -config /etc/agent/account-agent.yaml
 Restart=always
 User=root
 WorkingDirectory=${AGENT_DATA_DIR}
@@ -872,7 +879,7 @@ systemctl enable xray
 systemctl enable xray-tcp
 systemctl enable caddy || true
 if [ "$STANDALONE_MODE" != true ]; then
-    systemctl enable agent-svc-plus
+    systemctl enable xconnect-edge-agent
 fi
 systemctl restart xray || true
 systemctl restart caddy || true
@@ -888,12 +895,11 @@ fi
 systemctl restart xray-tcp || true
 
 if [ "$STANDALONE_MODE" = true ]; then
-    disable_agent_service_if_present
-    echo -e "${GREEN}Standalone mode: skipping agent-svc-plus service installation.${NC}"
+    echo -e "${GREEN}Standalone mode: skipping xconnect-edge-agent service installation.${NC}"
 elif [ -n "$AUTH_URL" ] && [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
-    systemctl restart agent-svc-plus
+    systemctl restart xconnect-edge-agent
 else
-    echo -e "${YELLOW}Skipping agent-svc-plus start: AUTH_URL or INTERNAL_SERVICE_TOKEN is missing.${NC}"
+    echo -e "${YELLOW}Skipping xconnect-edge-agent start: AUTH_URL or INTERNAL_SERVICE_TOKEN is missing.${NC}"
 fi
 
 post_install_network_optimization
@@ -915,6 +921,6 @@ else
         echo -e "  - apiToken: <not set>"
     fi
     if [ -z "$AUTH_URL" ] || [ -z "$INTERNAL_SERVICE_TOKEN" ]; then
-        echo -e "Set AUTH_URL and INTERNAL_SERVICE_TOKEN then run: systemctl restart agent-svc-plus"
+        echo -e "Set AUTH_URL and INTERNAL_SERVICE_TOKEN then run: systemctl restart xconnect-edge-agent"
     fi
 fi

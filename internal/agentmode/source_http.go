@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"agent.svc.plus/internal/xrayconfig"
+	"github.com/ai-workspace-xstream/xconnect-edge-agent/internal/xrayconfig"
 )
 
 // HTTPClientSource retrieves Xray clients from the controller over HTTP.

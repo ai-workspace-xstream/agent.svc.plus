@@ -39,7 +39,7 @@ spec:
       # --- Container 2: Agent Sidecar ---
       # Manages configuration and communicates with controller
       - name: agent-sidecar
-        image: asia-northeast1-docker.pkg.dev/xzerolab-480008/cloud-run-source-deploy/agent.svc.plus/agent-svc-plus:latest
+        image: asia-northeast1-docker.pkg.dev/xzerolab-480008/cloud-run-source-deploy/xconnect-edge-agent/xconnect-edge-agent:latest
         env:
         - name: INTERNAL_SERVICE_TOKEN
           valueFrom:

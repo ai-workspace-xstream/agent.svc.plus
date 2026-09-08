@@ -2,19 +2,19 @@
 # 快速验证脚本 - 用于目标主机上执行
 set -e
 
-echo "=== agent-svc-plus 快速验证 ==="
+echo "=== xconnect-edge-agent 快速验证 ==="
 echo ""
 
 # 1. 检查服务状态
 echo "1. 服务状态:"
-systemctl is-active agent-svc-plus && echo "   ✓ 服务运行中" || echo "   ✗ 服务未运行"
+systemctl is-active xconnect-edge-agent && echo "   ✓ 服务运行中" || echo "   ✗ 服务未运行"
 
 # 2. 检查配置文件
 echo ""
 echo "2. 配置文件:"
 test -f /etc/agent/account-agent.yaml && echo "   ✓ /etc/agent/account-agent.yaml 存在" || echo "   ✗ /etc/agent/account-agent.yaml 不存在"
-test -f /usr/local/bin/agent-svc-plus && echo "   ✓ agent-svc-plus 存在" || echo "   ✗ agent-svc-plus 不存在"
-systemctl cat agent-svc-plus | grep -F -- "-config /etc/agent/account-agent.yaml" >/dev/null && echo "   ✓ systemd ExecStart 正确" || echo "   ✗ systemd ExecStart 不匹配"
+test -f /usr/local/bin/xconnect-edge-agent && echo "   ✓ xconnect-edge-agent 存在" || echo "   ✗ xconnect-edge-agent 不存在"
+systemctl cat xconnect-edge-agent | grep -F -- "-config /etc/agent/account-agent.yaml" >/dev/null && echo "   ✓ systemd ExecStart 正确" || echo "   ✗ systemd ExecStart 不匹配"
 
 # 3. 检查依赖服务
 echo ""
@@ -28,7 +28,7 @@ test -d /usr/local/etc/xray/templates && echo "   ✓ /usr/local/etc/xray/templa
 # 4. 显示最近日志
 echo ""
 echo "4. 最近日志:"
-journalctl -u agent-svc-plus -n 5 --no-pager 2>/dev/null || echo "   无法获取日志"
+journalctl -u xconnect-edge-agent -n 5 --no-pager 2>/dev/null || echo "   无法获取日志"
 
 # 5. 检查 Agent ID
 echo ""

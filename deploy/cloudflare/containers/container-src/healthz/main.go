@@ -31,9 +31,9 @@ func main() {
 	listenAddr := flag.String("listen", envOrDefault("HEALTH_LISTEN_ADDR", ":8080"), "listen address")
 	flag.Parse()
 
-	xrayPIDFile := envOrDefault("XRAY_PID_FILE", "/var/run/agent-svc-plus/xray.pid")
-	xrayTCPPIDFile := envOrDefault("XRAY_TCP_PID_FILE", "/var/run/agent-svc-plus/xray-tcp.pid")
-	agentPIDFile := envOrDefault("AGENT_PID_FILE", "/var/run/agent-svc-plus/agent.pid")
+	xrayPIDFile := envOrDefault("XRAY_PID_FILE", "/var/run/xconnect-edge-agent/xray.pid")
+	xrayTCPPIDFile := envOrDefault("XRAY_TCP_PID_FILE", "/var/run/xconnect-edge-agent/xray-tcp.pid")
+	agentPIDFile := envOrDefault("AGENT_PID_FILE", "/var/run/xconnect-edge-agent/agent.pid")
 	xraySock := envOrDefault("XRAY_UNIX_SOCKET", "/dev/shm/xray.sock")
 
 	// Reverse proxy to xray XHTTP Unix socket (replaces Caddy reverse_proxy)
@@ -98,7 +98,7 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"service": "agent-svc-plus-runtime",
+			"service": "xconnect-edge-agent-runtime",
 			"node":    envOrDefault("AGENT_ID", "unknown"),
 		})
 	})

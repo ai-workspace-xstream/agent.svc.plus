@@ -4,7 +4,7 @@ This directory provides a container runtime for Cloudflare Workers Containers wh
 
 | Process | Command | Transport |
 |---------|---------|-----------|
-| **agent-svc-plus** | `/usr/local/bin/agent-svc-plus -config /etc/agent/account-agent.yaml` | Control Plane |
+| **xconnect-edge-agent** | `/usr/local/bin/xconnect-edge-agent -config /etc/agent/account-agent.yaml` | Control Plane |
 | **xray (XHTTP)** | `/usr/local/bin/xray run -config /usr/local/etc/xray/config.json` | XHTTP on Unix socket |
 | **xray (TCP)** | `/usr/local/bin/xray run -config /usr/local/etc/xray/tcp-config.json` | TCP+TLS on port 1443 |
 
@@ -57,14 +57,14 @@ npm run deploy
 
 ```bash
 # Build from repo root
-docker build -f deploy/cloudflare/containers/Dockerfile -t agent-svc-plus-runtime:local .
+docker build -f deploy/cloudflare/containers/Dockerfile -t xconnect-edge-agent-runtime:local .
 
 # Run locally
 docker run --rm -p 8080:8080 -p 1443:1443 \
   -e AGENT_ID=hk-xhttp.svc.plus \
   -e AGENT_CONTROLLER_URL=https://accounts-svc-plus-266500572462.asia-northeast1.run.app \
   -e AGENT_API_TOKEN=replace-with-token \
-  agent-svc-plus-runtime:local
+  xconnect-edge-agent-runtime:local
 ```
 
 Health checks:
@@ -103,7 +103,7 @@ Client ──HTTPS──► Worker (index.js) ──HTTP──► Container
                                                ├─ agent-healthz (:8080)
                                                ├─ xray (XHTTP: /dev/shm/xray.sock)
                                                ├─ xray (TCP: :1443)
-                                               └─ agent-svc-plus (control plane)
+                                               └─ xconnect-edge-agent (control plane)
 ```
 
 ### Config Sync Flow
@@ -127,7 +127,7 @@ Client ──HTTPS──► Worker (index.js) ──HTTP──► Container
 The same Docker image works on Cloud Run:
 
 ```bash
-gcloud builds submit --tag REGION-docker.pkg.dev/PROJECT/REPO/agent-svc-plus-runtime:latest .
+gcloud builds submit --tag REGION-docker.pkg.dev/PROJECT/REPO/xconnect-edge-agent-runtime:latest .
 gcloud run services replace deploy/cloudflare/containers/cloud-run.service.yaml --region REGION
 ```
 
