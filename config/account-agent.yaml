@@ -9,7 +9,7 @@ agent:
   # URL of the accounts.svc.plus controller
   controllerUrl: "https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
   # Authentication token 
-  apiToken: "%INTERNAL_SERVICE_TOKEN%"
+  apiToken: "${INTERNAL_SERVICE_TOKEN}"
 
   httpTimeout: 15s
   statusInterval: 1m

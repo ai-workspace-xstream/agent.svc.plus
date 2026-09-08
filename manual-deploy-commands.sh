@@ -7,7 +7,7 @@ HOST="5.78.45.49"
 USER="root"
 AGENT_ID="us-xhttp.svc.plus"
 CONTROLLER_URL="https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
-API_TOKEN="%INTERNAL_SERVICE_TOKEN%"
+API_TOKEN="${INTERNAL_SERVICE_TOKEN:?export INTERNAL_SERVICE_TOKEN before generating the remote script}"
 
 echo "=========================================="
 echo "agent-svc-plus 手动部署命令"
@@ -51,7 +51,7 @@ log:
 agent:
   id: "us-xhttp.svc.plus"
   controllerUrl: "https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
-  apiToken: "%INTERNAL_SERVICE_TOKEN%"
+  apiToken: "${INTERNAL_SERVICE_TOKEN}"
   httpTimeout: 15s
   statusInterval: 1m
   syncInterval: 5m

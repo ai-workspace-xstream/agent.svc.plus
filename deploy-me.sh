@@ -3,6 +3,7 @@
 # 在有网络的环境中执行此脚本
 
 set -e
+: "${INTERNAL_SERVICE_TOKEN:?export INTERNAL_SERVICE_TOKEN before running this script}"
 
 echo "=========================================="
 echo "agent-svc-plus 完整部署"
@@ -61,7 +62,7 @@ log:
 agent:
   id: "us-xhttp.svc.plus"
   controllerUrl: "https://accounts-svc-plus-266500572462.asia-northeast1.run.app"
-  apiToken: "%INTERNAL_SERVICE_TOKEN%"
+  apiToken: "${INTERNAL_SERVICE_TOKEN}"
   httpTimeout: 15s
   statusInterval: 1m
   syncInterval: 5m
