@@ -8,8 +8,14 @@ const defaultTemplate = `{
   "log": {
     "loglevel": "info"
   },
+  "api": {
+    "tag": "api",
+    "listen": "127.0.0.1:10086",
+    "services": ["HandlerService"]
+  },
   "inbounds": [
     {
+      "tag": "xhttp-vless",
       "listen": "/dev/shm/xray.sock,0666",
       "protocol": "vless",
       "settings": {

@@ -20,6 +20,13 @@ type ClientSource interface {
 
 type commandRunner func(ctx context.Context, cmd []string) ([]byte, error)
 
+// UserAdder adds clients to a running Xray instance without restarting it.
+// It is deliberately addition-only: removing a user from Xray's validator does
+// not terminate that user's established sessions.
+type UserAdder interface {
+	AddUsers(ctx context.Context, generator Generator, clients []Client) error
+}
+
 // PeriodicOptions configures a PeriodicSyncer instance.
 type PeriodicOptions struct {
 	Logger          *slog.Logger
@@ -29,6 +36,7 @@ type PeriodicOptions struct {
 	ValidateCommand []string
 	RestartCommand  []string
 	Runner          commandRunner
+	UserAdder       UserAdder
 	OnSync          func(SyncResult)
 }
 
@@ -41,10 +49,13 @@ type PeriodicSyncer struct {
 	validateCommand []string
 	restartCommand  []string
 	runner          commandRunner
+	userAdder       UserAdder
 	onSync          func(SyncResult)
+	trigger         chan struct{}
 
-	mu       sync.Mutex
-	lastHash string
+	mu          sync.Mutex
+	lastHash    string
+	lastClients []Client
 }
 
 // SyncResult describes the outcome of a synchronization attempt.
@@ -82,8 +93,22 @@ func NewPeriodicSyncer(opts PeriodicOptions) (*PeriodicSyncer, error) {
 		validateCommand: append([]string(nil), opts.ValidateCommand...),
 		restartCommand:  append([]string(nil), opts.RestartCommand...),
 		runner:          runner,
+		userAdder:       opts.UserAdder,
 		onSync:          opts.OnSync,
+		trigger:         make(chan struct{}, 1),
 	}, nil
+}
+
+// Trigger requests an immediate reconciliation. Multiple pending events are
+// coalesced because every reconciliation fetches the complete desired state.
+func (s *PeriodicSyncer) Trigger() {
+	if s == nil {
+		return
+	}
+	select {
+	case s.trigger <- struct{}{}:
+	default:
+	}
 }
 
 // Start launches the synchronization loop. The returned stop function cancels the
@@ -135,6 +160,10 @@ func (s *PeriodicSyncer) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		case <-s.trigger:
+			s.logger.Info("xray config sync triggered by controller event")
+		}
+		{
 			n, err := s.sync(ctx)
 			if err != nil {
 				s.notify(SyncResult{Clients: n, Error: err, CompletedAt: time.Now().UTC()})
@@ -182,17 +211,68 @@ func (s *PeriodicSyncer) sync(ctx context.Context) (int, error) {
 			return 0, err
 		}
 	}
-	if len(s.restartCommand) > 0 {
+
+	// The first sync bootstraps the API/tagged inbound through the normal
+	// restart path. After that, pure additions can be applied through
+	// HandlerService without interrupting established connections. Withdrawing a
+	// paused user's node-local credential or mutating a credential still restarts
+	// Xray to enforce the pause immediately; this never deletes the account.
+	s.mu.Lock()
+	previousClients := append([]Client(nil), s.lastClients...)
+	s.mu.Unlock()
+	added, destructive := clientDelta(previousClients, clients)
+	dynamicApplied := false
+	if previousHash != "" && !destructive {
+		if len(added) == 0 {
+			dynamicApplied = true // Same client set; only ordering changed.
+		} else if s.userAdder != nil {
+			if err := s.userAdder.AddUsers(ctx, s.generator, added); err != nil {
+				s.logger.Warn("dynamic xray user add failed; falling back to restart", "err", err, "users", len(added))
+			} else {
+				dynamicApplied = true
+				s.logger.Info("xray users added without restart", "users", len(added))
+			}
+		}
+	}
+	if !dynamicApplied && len(s.restartCommand) > 0 {
 		if err := s.runCommand(ctx, s.restartCommand, "restart xray"); err != nil {
 			return 0, err
 		}
+	} else if !dynamicApplied && s.userAdder != nil && previousHash != "" {
+		return 0, errors.New("dynamic user update failed and no restart command is configured")
 	}
 
 	s.mu.Lock()
 	s.lastHash = currentHash
+	s.lastClients = append([]Client(nil), clients...)
 	s.mu.Unlock()
 
 	return len(clients), nil
+}
+
+func clientDelta(previous, current []Client) (added []Client, destructive bool) {
+	previousByID := make(map[string]Client, len(previous))
+	currentByID := make(map[string]Client, len(current))
+	for _, client := range previous {
+		previousByID[client.ID] = client
+	}
+	for _, client := range current {
+		currentByID[client.ID] = client
+		old, exists := previousByID[client.ID]
+		if !exists {
+			added = append(added, client)
+			continue
+		}
+		if old.Email != client.Email || old.Flow != client.Flow {
+			destructive = true
+		}
+	}
+	for id := range previousByID {
+		if _, exists := currentByID[id]; !exists {
+			destructive = true
+		}
+	}
+	return added, destructive
 }
 
 func (s *PeriodicSyncer) notify(result SyncResult) {
