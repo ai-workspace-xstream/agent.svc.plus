@@ -9,14 +9,15 @@ agent:
   apiToken: "PLACEHOLDER" # Will be overridden by INTERNAL_SERVICE_TOKEN env var
   httpTimeout: 15s
   statusInterval: 1m
-  syncInterval: 5m
+  # Quota revocations are applied on the next sync.
+  syncInterval: 10m
   tls:
     insecureSkipVerify: false
 
 xray:
   sync:
     enabled: true
-    interval: 5m
+    interval: 10m
     targets:
       - name: "xhttp"
         outputPath: "/etc/xray/config.json"

@@ -214,6 +214,7 @@ This package defines the local runtime configuration model.
 | `TemplatePath` | `string` | Optional JSON template file path. |
 | `ValidateCommand` | `[]string` | Optional command run after render and before restart. |
 | `RestartCommand` | `[]string` | Optional command run after successful validation. |
+| `DynamicUsers` | `DynamicUserSync` | Optional local Xray HandlerService endpoint used to add users without restart; withdrawing a paused user's node-local credential still uses `RestartCommand` to terminate established sessions. The account is retained. |
 
 #### `Load`
 

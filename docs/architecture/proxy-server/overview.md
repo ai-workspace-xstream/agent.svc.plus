@@ -42,7 +42,7 @@ flowchart TB
 
 | Name | Path | Purpose | Database / table | Auth mode |
 | --- | --- | --- | --- | --- |
-| List clients | `GET /api/agent-server/v1/users` | Fetch current Xray client list from controller | N/A | `Authorization: Bearer <agent token>` and `X-Service-Token`; optional `X-Agent-ID` |
+| List clients | `GET /api/agent-server/v1/users` | Fetch controller-authorized Xray clients; quota-exhausted clients are omitted | `account_quota_states`, `account_billing_profiles` (controller-side) | `Authorization: Bearer <agent token>` and `X-Service-Token`; optional `X-Agent-ID` |
 | Report status | `POST /api/agent-server/v1/status` | Report heartbeat, health, and sync revision | N/A | `Authorization: Bearer <agent token>` and `X-Service-Token`; optional `X-Agent-ID` |
 | Health | `GET /healthz` | Edge / worker health endpoint when deployed with the optional worker layer | N/A | none |
 
@@ -52,6 +52,9 @@ flowchart TB
 - Build and reload Xray configuration files.
 - Keep TLS certificates live via Caddy.
 - Poll accounts for client and node updates.
+- Apply pure client additions and quota-renewal restores online through Xray HandlerService without restarting Xray.
+- Treat controller events as the primary synchronization trigger, with a ten-minute poll as a disconnect and missed-event fallback.
+- Apply paused-user credential withdrawal and credential mutations by restarting only the affected Xray instance, because Xray's online remove operation does not terminate established sessions. The user account and all billing records remain in the control plane.
 - Report agent health and sync progress back to the controller.
 - Schedule billing reconciliation and future control actions without owning the billing source of truth.
 - Leave traffic metric translation to the separate exporter layer.
@@ -65,3 +68,5 @@ flowchart TB
 
 - The agent runtime supports a standalone mode, but the architecture above reflects the controller-managed mode used in the main Cloud-Neutral Toolkit flow.
 - The optional edge deployment exposes the same agent-server endpoints without changing the controller contract.
+- Caddy remains the TLS/XHTTP entrypoint. Per-account quota enforcement happens in the controller-to-Xray sync path because Caddy cannot see the VLESS account identity.
+- Caddy is never restarted for a client-list change. A destructive XHTTP update briefly resets its upstream Unix-socket connections while Caddy itself remains available.

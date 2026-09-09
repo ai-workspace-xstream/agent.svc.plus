@@ -1,6 +1,7 @@
 package agentmode
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -133,6 +134,52 @@ func (c *Client) ListClients(ctx context.Context) (agentproto.ClientListResponse
 		return agentproto.ClientListResponse{}, lastErr
 	}
 	return agentproto.ClientListResponse{}, errors.New("controller users endpoint is unavailable")
+}
+
+// WatchUserConfigEvents keeps a server-sent event stream open and invokes
+// onChange whenever the controller reports a new desired-user revision.
+func (c *Client) WatchUserConfigEvents(ctx context.Context, onChange func(string)) error {
+	endpoint, err := url.JoinPath(c.baseURL.String(), "/api/agent-server/v1/users/events")
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	c.applyHeaders(req)
+	req.Header.Set("Accept", "text/event-stream")
+
+	streamClient := *c.http
+	streamClient.Timeout = 0
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<14))
+		return fmt.Errorf("controller event stream returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		revision := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if revision != "" && onChange != nil {
+			onChange(revision)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read controller event stream: %w", err)
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return errors.New("controller event stream closed")
 }
 
 // ReportStatus submits the agent status report to the controller.

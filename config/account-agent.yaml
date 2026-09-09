@@ -13,7 +13,8 @@ agent:
 
   httpTimeout: 15s
   statusInterval: 1m
-  syncInterval: 5m
+  # Quota revocations are applied on the next sync.
+  syncInterval: 10m
 
   tls:
     insecureSkipVerify: false
@@ -21,7 +22,7 @@ agent:
 xray:
   sync:
     enabled: true
-    interval: 5m
+    interval: 10m
     targets:
       # XHTTP Transport Configuration
       - name: "xhttp"

@@ -214,6 +214,7 @@ main
 | `TemplatePath` | `string` | 可选 JSON 模板路径。 |
 | `ValidateCommand` | `[]string` | 渲染后、重启前执行的校验命令。 |
 | `RestartCommand` | `[]string` | 校验成功后执行的重启命令。 |
+| `DynamicUsers` | `DynamicUserSync` | 可选的本机 Xray HandlerService 配置；新增用户在线生效，暂停时仅撤下节点本地凭据并执行 `RestartCommand` 以立即断开存量连接，控制面用户永远保留。 |
 
 #### `Load`
 

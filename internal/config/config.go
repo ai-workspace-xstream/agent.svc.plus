@@ -67,11 +67,21 @@ type XraySync struct {
 }
 
 type SyncTarget struct {
-	Name            string   `yaml:"name"`
-	OutputPath      string   `yaml:"outputPath"`
-	TemplatePath    string   `yaml:"templatePath"`
-	ValidateCommand []string `yaml:"validateCommand"`
-	RestartCommand  []string `yaml:"restartCommand"`
+	Name            string          `yaml:"name"`
+	OutputPath      string          `yaml:"outputPath"`
+	TemplatePath    string          `yaml:"templatePath"`
+	ValidateCommand []string        `yaml:"validateCommand"`
+	RestartCommand  []string        `yaml:"restartCommand"`
+	DynamicUsers    DynamicUserSync `yaml:"dynamicUsers"`
+}
+
+// DynamicUserSync configures Xray HandlerService updates for client additions.
+// Withdrawing a paused user's node-local credential still restarts Xray so
+// established sessions are terminated immediately; the account is never deleted.
+type DynamicUserSync struct {
+	Enabled    bool   `yaml:"enabled"`
+	Server     string `yaml:"server"`
+	Executable string `yaml:"executable"`
 }
 
 func Load(path string) (*Config, error) {

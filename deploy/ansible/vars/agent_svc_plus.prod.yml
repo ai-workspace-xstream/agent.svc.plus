@@ -7,7 +7,7 @@ agent_controller_url: "https://accounts-svc-plus-266500572462.asia-northeast1.ru
 
 # Xray configuration
 xray_enabled: true
-xray_sync_interval: "5m"
+xray_sync_interval: "10m"
 
 # Xray UUID (VLESS 协议)
 UUID: "d36834b7-7da3-4dbd-9906-cd0946b6b0cc"

@@ -9,14 +9,15 @@ agent:
   apiToken: "replace-with-agent-token"
   httpTimeout: 15s
   statusInterval: 1m
-  syncInterval: 5m
+  # Quota revocations are applied on the next sync.
+  syncInterval: 10m
   tls:
     insecureSkipVerify: false
 
 xray:
   sync:
     enabled: true
-    interval: 5m
+    interval: 10m
     targets:
       - name: "xhttp"
         outputPath: "/usr/local/etc/xray/config.json"
@@ -26,6 +27,10 @@ xray:
           - "systemctl"
           - "restart"
           - "xray.service"
+        dynamicUsers:
+          enabled: true
+          executable: "/usr/local/bin/xray"
+          server: "127.0.0.1:10086"
       - name: "tcp"
         outputPath: "/usr/local/etc/xray/tcp-config.json"
         templatePath: "config/xray.tcp.template.json"
@@ -34,3 +39,7 @@ xray:
           - "systemctl"
           - "restart"
           - "xray-tcp.service"
+        dynamicUsers:
+          enabled: true
+          executable: "/usr/local/bin/xray"
+          server: "127.0.0.1:10087"
