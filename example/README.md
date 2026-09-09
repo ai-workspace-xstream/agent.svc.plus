@@ -1,6 +1,6 @@
-# Agent Service Plus - Example Configurations
+# XConnect Edge Agent - Example Configurations
 
-This directory contains example configuration files for setting up and running the Agent Service Plus.
+This directory contains example configuration files for setting up and running the XConnect Edge Agent.
 
 ## Files
 
@@ -31,7 +31,7 @@ Template configuration file for the agent service. This file should be copied to
 
 3. **Restart the agent service**:
    ```bash
-   sudo systemctl restart agent-svc-plus
+   sudo systemctl restart xconnect-edge-agent
    ```
 
 ## Automated Setup
@@ -39,7 +39,7 @@ Template configuration file for the agent service. This file should be copied to
 For automated installation, use the `setup-proxy.sh` script which handles configuration automatically:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \
   bash -s -- --node your-node.svc.plus \
   --auth-url https://accounts-svc-plus-266500572462.asia-northeast1.run.app \
   --internal-service-token your-token-here

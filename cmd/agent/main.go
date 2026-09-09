@@ -9,12 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"agent.svc.plus/internal/agentmode"
-	"agent.svc.plus/internal/config"
+	"github.com/ai-workspace-xstream/xconnect-edge-agent/internal/agentmode"
+	"github.com/ai-workspace-xstream/xconnect-edge-agent/internal/config"
 )
 
 var (
-	serviceName = "agent-svc-plus"
+	serviceName = "xconnect-edge-agent"
 	gitCommit   = "unknown"
 	buildDate   = "unknown"
 )

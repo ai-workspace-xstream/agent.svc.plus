@@ -23,13 +23,13 @@ Host us-xhttp.svc.plus
 
 ### 测试连接
 ```bash
-ssh us-xhttp.svc.plus "hostname && systemctl status agent-svc-plus"
+ssh us-xhttp.svc.plus "hostname && systemctl status xconnect-edge-agent"
 ```
 
 ### 执行部署
 ```bash
 cd deploy/ansible
-ansible-playbook playbooks/deploy_agent_svc_plus.yml -v
+ansible-playbook playbooks/deploy_xconnect_edge_agent.yml -v
 ```
 
 ---
@@ -65,7 +65,7 @@ ssh root@5.78.45.49 "hostname"
 ### 执行部署
 ```bash
 cd deploy/ansible
-ansible-playbook playbooks/deploy_agent_svc_plus.yml -v
+ansible-playbook playbooks/deploy_xconnect_edge_agent.yml -v
 ```
 
 ---
@@ -85,7 +85,7 @@ ssh -p 2222 root@localhost
 编辑 `deploy/ansible/inventory.ini`:
 
 ```ini
-[agent_svc_plus]
+[xconnect_edge_agent]
 us-xhttp.svc.plus ansible_host=localhost ansible_port=2222 ansible_user=root
 
 [all:vars]
@@ -119,7 +119,7 @@ ssh -MNf us-xhttp.svc.plus
 
 # 执行 ansible
 cd deploy/ansible
-ansible-playbook playbooks/deploy_agent_svc_plus.yml -v
+ansible-playbook playbooks/deploy_xconnect_edge_agent.yml -v
 ```
 
 ---
@@ -141,7 +141,7 @@ ssh -v root@5.78.45.49 "echo 'SSH OK'"
 
 # 4. 测试 Ansible 连接
 cd deploy/ansible
-ansible agent_svc_plus -m ping
+ansible xconnect_edge_agent -m ping
 ```
 
 ---
@@ -169,7 +169,7 @@ ssh root@5.78.45.49
 ### Ansible 权限问题
 ```bash
 # 使用 sudo
-ansible-playbook playbooks/deploy_agent_svc_plus.yml -v --ask-become-pass
+ansible-playbook playbooks/deploy_xconnect_edge_agent.yml -v --ask-become-pass
 
 # 或配置 sudo 免密
 echo "root ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers.d/ansible

@@ -10,14 +10,14 @@ source "$SCRIPT_DIR/common.sh"
 source "$PROJECT_ROOT/.env" 2>/dev/null || true
 
 INVENTORY_FILE="$SCRIPT_DIR/inventory.ini"
-AGENT_VARS_FILE="$SCRIPT_DIR/vars/agent_svc_plus.yml"
+AGENT_VARS_FILE="$SCRIPT_DIR/vars/xconnect_edge_agent.yml"
 TARGET_ENVIRONMENT="inventory.ini"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --prod)
             INVENTORY_FILE="$SCRIPT_DIR/inventory.prod.ini"
-            AGENT_VARS_FILE="$SCRIPT_DIR/vars/agent_svc_plus.prod.yml"
+            AGENT_VARS_FILE="$SCRIPT_DIR/vars/xconnect_edge_agent.prod.yml"
             TARGET_ENVIRONMENT="production"
             shift
             ;;
@@ -52,13 +52,13 @@ HOST_ALIAS="$(inventory_first_host_alias "$INVENTORY_FILE" || true)"
 HOST="$(inventory_target_host "$INVENTORY_FILE" || true)"
 
 if [ -z "$HOST_ALIAS" ] || [ -z "$HOST" ]; then
-    echo "错误: inventory 未配置 agent_svc_plus 主机: $INVENTORY_FILE"
+    echo "错误: inventory 未配置 xconnect_edge_agent 主机: $INVENTORY_FILE"
     echo "请先填写 inventory 主机，或显式使用 --prod / --inventory。"
     exit 1
 fi
 
 echo "=========================================="
-echo "agent-svc-plus 一键部署和验证"
+echo "xconnect-edge-agent 一键部署和验证"
 echo "=========================================="
 echo ""
 echo "目标环境: $TARGET_ENVIRONMENT"
@@ -81,7 +81,7 @@ echo ""
 
 # 步骤 2: 部署 Agent
 echo "=== 步骤 2/3: 部署 Agent ==="
-ansible-playbook -i "$INVENTORY_FILE" playbooks/deploy_agent_svc_plus.yml -v || {
+ansible-playbook -i "$INVENTORY_FILE" playbooks/deploy_xconnect_edge_agent.yml -v || {
     echo "部署失败!"
     exit 1
 }

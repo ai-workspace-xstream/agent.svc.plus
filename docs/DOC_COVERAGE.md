@@ -1,8 +1,8 @@
 # Documentation Coverage Matrix
 
-This matrix tracks the bilingual canonical documentation set for `agent.svc.plus` and maps it back to the current codebase and older docs.
+This matrix tracks the bilingual canonical documentation set for `xconnect-edge-agent` and maps it back to the current codebase and older docs.
 
-该矩阵用于跟踪 `agent.svc.plus` 的双语规范文档，并将其与当前代码状态和历史文档对应起来。
+该矩阵用于跟踪 `xconnect-edge-agent` 的双语规范文档，并将其与当前代码状态和历史文档对应起来。
 
 | Category | EN | ZH | Current status | Existing references | Next check |
 | --- | --- | --- | --- | --- | --- |

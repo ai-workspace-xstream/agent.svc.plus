@@ -7,7 +7,7 @@ This document records how to run `bvisible/mcp-ssh-manager` locally and connect 
 The repo is cloned here:
 
 ```
-/Users/shenlan/workspaces/Cloud-Neutral-Toolkit/agent.svc.plus/mcp-ssh-manager
+/Users/shenlan/workspaces/Cloud-Neutral-Toolkit/xconnect-edge-agent/mcp-ssh-manager
 ```
 
 ## Prerequisites
@@ -25,7 +25,7 @@ Optional (only if you want extra features):
 From the clone:
 
 ```bash
-cd /Users/shenlan/workspaces/Cloud-Neutral-Toolkit/agent.svc.plus/mcp-ssh-manager
+cd /Users/shenlan/workspaces/Cloud-Neutral-Toolkit/xconnect-edge-agent/mcp-ssh-manager
 npm install
 ```
 
@@ -36,7 +36,7 @@ Edit `~/.codex/config.toml` and add:
 ```toml
 [mcp_servers.ssh-manager]
 command = "node"
-args = ["/Users/shenlan/workspaces/Cloud-Neutral-Toolkit/agent.svc.plus/mcp-ssh-manager/src/index.js"]
+args = ["/Users/shenlan/workspaces/Cloud-Neutral-Toolkit/xconnect-edge-agent/mcp-ssh-manager/src/index.js"]
 env = { SSH_CONFIG_PATH = "/Users/shenlan/.codex/ssh-config.toml" }
 startup_timeout_ms = 20000
 ```
@@ -60,7 +60,7 @@ Codex will start the server automatically using the config above.
 Optional CLI helpers (from the repo):
 
 ```bash
-cd /Users/shenlan/workspaces/Cloud-Neutral-Toolkit/agent.svc.plus/mcp-ssh-manager
+cd /Users/shenlan/workspaces/Cloud-Neutral-Toolkit/xconnect-edge-agent/mcp-ssh-manager
 ./node_modules/.bin/ssh-manager codex setup
 ./node_modules/.bin/ssh-manager codex test
 ```
@@ -71,5 +71,5 @@ cd /Users/shenlan/workspaces/Cloud-Neutral-Toolkit/agent.svc.plus/mcp-ssh-manage
 - To run manually (for debugging), you can execute:
 
 ```bash
-node /Users/shenlan/workspaces/Cloud-Neutral-Toolkit/agent.svc.plus/mcp-ssh-manager/src/index.js
+node /Users/shenlan/workspaces/Cloud-Neutral-Toolkit/xconnect-edge-agent/mcp-ssh-manager/src/index.js
 ```

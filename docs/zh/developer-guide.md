@@ -6,9 +6,9 @@
 
 ## 与当前代码对齐的说明
 
-- 文档目标仓库: `agent.svc.plus`
+- 文档目标仓库: `xconnect-edge-agent`
 - 仓库类型: `hybrid-agent`
-- 构建与运行依据: go.mod (`agent.svc.plus`)
+- 构建与运行依据: go.mod (`xconnect-edge-agent`)
 - 主要实现与运维目录: `cmd/`, `internal/`, `agent/`, `deploy/`, `scripts/`, `example/`, `config/`
 - `package.json` 脚本快照: `deploy`
 - 代码符号级说明位于 [API 参考](api-reference.md)；本页继续聚焦开发流程、协作约定与工程上下文。

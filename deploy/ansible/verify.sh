@@ -1,5 +1,5 @@
 #!/bin/bash
-# agent-svc-plus 自动验证脚本
+# xconnect-edge-agent 自动验证脚本
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,14 +16,14 @@ NC='\033[0m' # No Color
 source "$PROJECT_ROOT/.env" 2>/dev/null || true
 
 INVENTORY_FILE="$SCRIPT_DIR/inventory.ini"
-AGENT_VARS_FILE="$SCRIPT_DIR/vars/agent_svc_plus.yml"
+AGENT_VARS_FILE="$SCRIPT_DIR/vars/xconnect_edge_agent.yml"
 TARGET_ENVIRONMENT="inventory.ini"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --prod)
             INVENTORY_FILE="$SCRIPT_DIR/inventory.prod.ini"
-            AGENT_VARS_FILE="$SCRIPT_DIR/vars/agent_svc_plus.prod.yml"
+            AGENT_VARS_FILE="$SCRIPT_DIR/vars/xconnect_edge_agent.prod.yml"
             TARGET_ENVIRONMENT="production"
             shift
             ;;
@@ -62,13 +62,13 @@ EXPECTED_AGENT_ID="$(vars_agent_id "$AGENT_VARS_FILE" || true)"
 EXPECTED_DNS_IP="$(vars_cloudflare_record_ip "$AGENT_VARS_FILE" || true)"
 
 if [ -z "$HOST_ALIAS" ] || [ -z "$HOST" ]; then
-    echo "错误: inventory 未配置 agent_svc_plus 主机: $INVENTORY_FILE"
+    echo "错误: inventory 未配置 xconnect_edge_agent 主机: $INVENTORY_FILE"
     echo "请先填写 inventory 主机，或显式使用 --prod / --inventory。"
     exit 1
 fi
 
 echo "=========================================="
-echo "agent-svc-plus 自动验证"
+echo "xconnect-edge-agent 自动验证"
 echo "=========================================="
 echo ""
 echo "目标环境: $TARGET_ENVIRONMENT"
@@ -144,7 +144,7 @@ if [ "$SSH_OK" == "1" ]; then
     echo "========== 4. 服务验证 =========="
     
     # 检查服务状态
-    SERVICE_STATUS=$(ssh -p "$PORT" "$USER@$HOST" "systemctl is-active agent-svc-plus" 2>/dev/null || echo "unknown")
+    SERVICE_STATUS=$(ssh -p "$PORT" "$USER@$HOST" "systemctl is-active xconnect-edge-agent" 2>/dev/null || echo "unknown")
     if [ "$SERVICE_STATUS" == "active" ]; then
         check_pass "服务状态: active (running)"
     else
@@ -152,7 +152,7 @@ if [ "$SSH_OK" == "1" ]; then
     fi
     
     # 检查服务是否开机自启
-    ENABLED=$(ssh -p "$PORT" "$USER@$HOST" "systemctl is-enabled agent-svc-plus" 2>/dev/null || echo "no")
+    ENABLED=$(ssh -p "$PORT" "$USER@$HOST" "systemctl is-enabled xconnect-edge-agent" 2>/dev/null || echo "no")
     if [ "$ENABLED" == "enabled" ]; then
         check_pass "开机自启: enabled"
     else
@@ -160,9 +160,9 @@ if [ "$SSH_OK" == "1" ]; then
     fi
     
     # 检查二进制文件
-    BINARY_EXISTS=$(ssh -p "$PORT" "$USER@$HOST" "test -f /usr/local/bin/agent-svc-plus && echo 'yes' || echo 'no'" 2>/dev/null || echo "no")
+    BINARY_EXISTS=$(ssh -p "$PORT" "$USER@$HOST" "test -f /usr/local/bin/xconnect-edge-agent && echo 'yes' || echo 'no'" 2>/dev/null || echo "no")
     if [ "$BINARY_EXISTS" == "yes" ]; then
-        check_pass "二进制文件: /usr/local/bin/agent-svc-plus 存在"
+        check_pass "二进制文件: /usr/local/bin/xconnect-edge-agent 存在"
     else
         check_fail "二进制文件: 不存在"
     fi
@@ -176,7 +176,7 @@ if [ "$SSH_OK" == "1" ]; then
     fi
 
     # 检查 systemd ExecStart 是否匹配 setup-proxy.sh 模型
-    EXECSTART_OK=$(ssh -p "$PORT" "$USER@$HOST" "systemctl cat agent-svc-plus | grep -F -- '-config /etc/agent/account-agent.yaml' >/dev/null && echo 'yes' || echo 'no'" 2>/dev/null || echo "no")
+    EXECSTART_OK=$(ssh -p "$PORT" "$USER@$HOST" "systemctl cat xconnect-edge-agent | grep -F -- '-config /etc/agent/account-agent.yaml' >/dev/null && echo 'yes' || echo 'no'" 2>/dev/null || echo "no")
     if [ "$EXECSTART_OK" == "yes" ]; then
         check_pass "systemd ExecStart 使用 /etc/agent/account-agent.yaml"
     else
@@ -194,7 +194,7 @@ if [ "$SSH_OK" == "1" ]; then
     fi
     
     # 检查进程
-    PROCESS_RUNNING=$(ssh -p "$PORT" "$USER@$HOST" "pgrep -f 'agent-svc-plus' || echo 'no'" 2>/dev/null || echo "no")
+    PROCESS_RUNNING=$(ssh -p "$PORT" "$USER@$HOST" "pgrep -f 'xconnect-edge-agent' || echo 'no'" 2>/dev/null || echo "no")
     if [ "$PROCESS_RUNNING" != "no" ]; then
         check_pass "进程运行中: PID $PROCESS_RUNNING"
     else
@@ -248,7 +248,7 @@ if [ "$SSH_OK" == "1" ]; then
     echo ""
     echo "========== 5. 日志验证 =========="
     echo "最近 10 行日志:"
-    ssh -p "$PORT" "$USER@$HOST" "journalctl -u agent-svc-plus -n 10 --no-pager" 2>/dev/null || echo "无法获取日志"
+    ssh -p "$PORT" "$USER@$HOST" "journalctl -u xconnect-edge-agent -n 10 --no-pager" 2>/dev/null || echo "无法获取日志"
     echo ""
     
     echo "========== 6. 连接验证 =========="
@@ -268,7 +268,7 @@ else
     echo "SSH 连接不可用，跳过远程验证"
     echo ""
     echo "请在可访问目标主机的环境中执行验证:"
-    echo "  ssh -p $PORT $USER@$HOST 'systemctl status agent-svc-plus'"
+    echo "  ssh -p $PORT $USER@$HOST 'systemctl status xconnect-edge-agent'"
 fi
 
 echo ""

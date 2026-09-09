@@ -1,4 +1,4 @@
-# Agent Service Plus 🚀
+# XConnect Edge Agent 🚀
 
 <p align="center">
   <strong>只要一个域名 + 一台 VPS，一键部署高性能、全自动证书的 AI 加速节点</strong>
@@ -13,13 +13,28 @@
 
 ---
 
+## 📡 项目定位
+
+**XConnect Edge Agent** 是部署在 XConnect 代理节点上的边缘控制代理，负责把节点运行时连接到 [accounts 控制面](https://github.com/ai-workspace-xstream/accounts)：
+
+- 🔐 使用节点凭据与 `accounts` 完成认证通信。
+- 🔄 同步用户/节点配置，并在本机生成和更新 Xray 配置。
+- 💓 上报节点心跳、健康状态、同步进度及运行信息。
+- ⚙️ 管理 Xray 配置加载与服务生命周期；Caddy 负责 HTTPS/TLS 与入口反向代理。
+
+它是节点侧的控制面组件，不是账号数据库、计费真相源或独立的指标存储服务。指标采集由 `xray-exporter` 等组件负责。
+
+> **English**: XConnect Edge Agent is the node-side control-plane agent for XConnect. It authenticates with `accounts`, synchronizes node and client configuration, reports node health and sync status, and manages the local Xray runtime behind Caddy.
+
+---
+
 ## 🌟 核心亮点
 
 - ⚡ **零门槛 3 分钟一键自建**：单行 Shell 命令全自动安装，无需手动编辑繁琐 JSON。
 - 🔒 **全自动 HTTPS / TLS 证书**：集成 Caddy 自动化 Let's Encrypt 证书签发与平滑续期。
 - 🏎️ **内核级低延迟优化**：安装时自动应用 Linux BBR 拥塞控制 + FQ 队列调度优化。
 - 📦 **双架构支持**：完美适配主流 Linux 发行版（Ubuntu / Debian / CentOS / Alpine），支持 AMD64 (x86_64) 与 ARM64 (aarch64)。
-- 🔄 **多种工作模式**：既支持 100% 离线独立自建，也支持与 [XConnect 控制台](https://console.svc.plus/products/xconnect) 或私有部署后端实现多租户集群管理。
+- 🔄 **灵活的控制面接入**：既支持 100% 离线独立自建，也支持通过 `accounts` 与 [XConnect 控制台](https://console.svc.plus/products/xconnect) 或私有部署后端实现节点集群管理。
 
 ---
 
@@ -41,14 +56,16 @@ flowchart LR
 
 通过 SSH 连接进入你的 VPS，粘贴并执行以下命令（将 `xhttp.example.com` 替换为你的真实域名）：
 
+已有 `agent-svc-plus` 安装的节点重新执行此命令即可迁移到 `xconnect-edge-agent` 服务名；脚本会先停止旧服务，避免同一节点重复上报。
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \
   bash -s -- --node xhttp.example.com
 ```
 
 > **提示（纯独立运行）**：如果你希望完全本地独立运行（不连接任何云端管理端），可直接加上 `--standalone` 参数：
 > ```bash
-> curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+> curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \
 >   bash -s -- --node xhttp.example.com --standalone
 > ```
 
@@ -84,17 +101,17 @@ curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plu
 
 ```bash
 # 1. 仅升级 Agent 与核心二进制（保留现有配置文件与证书不变）
-curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \
   bash -s -- --upgrade-only
 
 # 2. 与 postgresql.svc.plus 数据库同机部署（自动放行 5443/tcp 端口）
 OPEN_STUNNEL_5443=true \
-curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \
   bash -s -- --node xhttp.example.com --open-stunnel-5443
 
 # 3. 搭配 Cloudflare API Token 自动配置 DNS 解析
 CLOUDFLARE_API_TOKEN="your-cf-token" \
-curl -fsSL https://raw.githubusercontent.com/cloud-neutral-toolkit/agent.svc.plus/main/scripts/setup-proxy.sh | \
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \
   bash -s -- --node xhttp.example.com
 ```
 
@@ -143,9 +160,9 @@ journalctl -u caddy -n 50 --no-pager
 systemctl status xray
 journalctl -u xray -n 50 --no-pager
 
-# 查看 Agent 控制服务（如已启用）
-systemctl status agent-svc-plus
-journalctl -u agent-svc-plus -n 50 --no-pager
+# 查看 XConnect Edge Agent 控制服务（如已启用）
+systemctl status xconnect-edge-agent
+journalctl -u xconnect-edge-agent -n 50 --no-pager
 ```
 </details>
 

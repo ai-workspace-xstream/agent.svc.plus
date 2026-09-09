@@ -14,7 +14,7 @@ inventory_first_host_line() {
     local inventory_file="$1"
 
     awk '
-        /^\[agent_svc_plus\]/ { in_group=1; next }
+        /^\[xconnect_edge_agent\]/ { in_group=1; next }
         /^\[/ { in_group=0 }
         in_group && $0 !~ /^[[:space:]]*#/ && NF { print; exit }
     ' "$inventory_file"

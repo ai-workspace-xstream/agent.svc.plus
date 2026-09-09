@@ -7,7 +7,7 @@ EnvironmentFile={{ xray_exporter_config_path }}
 ExecStart={{ xray_exporter_binary_path }}
 Restart=always
 User=root
-WorkingDirectory={{ agent_svc_plus_data_dir }}
+WorkingDirectory={{ xconnect_edge_agent_data_dir }}
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=XConnect Edge Agent
+After=network.target
+
+[Service]
+ExecStart={{ xconnect_edge_agent_binary_path }} -config {{ xconnect_edge_agent_config_path }}
+Restart=always
+User={{ xconnect_edge_agent_user }}
+WorkingDirectory={{ xconnect_edge_agent_data_dir }}
+
+[Install]
+WantedBy=multi-user.target
