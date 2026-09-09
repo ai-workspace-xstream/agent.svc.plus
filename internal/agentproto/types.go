@@ -23,6 +23,7 @@ type StatusReport struct {
 	AgentID      string     `json:"agentId"` // Self-reported agent ID (e.g., "hk-xhttp.svc.plus")
 	Healthy      bool       `json:"healthy"`
 	Message      string     `json:"message,omitempty"`
+	HeartbeatAt  time.Time  `json:"heartbeatAt"`
 	Users        int        `json:"users"`
 	SyncRevision string     `json:"syncRevision,omitempty"`
 	Xray         XrayStatus `json:"xray"`
@@ -36,6 +37,9 @@ type XrayStatus struct {
 	ConfigHash   string     `json:"configHash,omitempty"`
 	NodeID       string     `json:"nodeId,omitempty"`
 	Region       string     `json:"region,omitempty"`
+	Pool         string     `json:"pool,omitempty"`
+	Provider     string     `json:"provider,omitempty"`
+	Product      string     `json:"product,omitempty"`
 	LineCode     string     `json:"lineCode,omitempty"`
 	PricingGroup string     `json:"pricingGroup,omitempty"`
 	StatsEnabled bool       `json:"statsEnabled"`
