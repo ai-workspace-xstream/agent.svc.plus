@@ -249,6 +249,7 @@ func buildStatusReport(agent config.Agent, snapshot trackerSnapshot, syncInterva
 		AgentID:      agent.ID,
 		Healthy:      healthy,
 		Message:      snapshot.LastError,
+		HeartbeatAt:  time.Now().UTC(),
 		Users:        snapshot.Clients,
 		SyncRevision: snapshot.Revision,
 		Xray: agentproto.XrayStatus{
@@ -263,6 +264,9 @@ func buildStatusReport(agent config.Agent, snapshot trackerSnapshot, syncInterva
 			}(),
 			NodeID:       firstNonEmpty(strings.TrimSpace(agent.NodeID), strings.TrimSpace(agent.ID)),
 			Region:       strings.TrimSpace(agent.Region),
+			Pool:         strings.TrimSpace(agent.Pool),
+			Provider:     strings.TrimSpace(agent.Provider),
+			Product:      strings.TrimSpace(agent.Product),
 			LineCode:     strings.TrimSpace(agent.LineCode),
 			PricingGroup: strings.TrimSpace(agent.PricingGroup),
 			StatsEnabled: agent.StatsEnabled,

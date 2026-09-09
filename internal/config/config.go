@@ -25,6 +25,9 @@ type Agent struct {
 	ID             string        `yaml:"id"`
 	NodeID         string        `yaml:"nodeId"`
 	Region         string        `yaml:"region"`
+	Pool           string        `yaml:"pool"`
+	Provider       string        `yaml:"provider"`
+	Product        string        `yaml:"product"`
 	LineCode       string        `yaml:"lineCode"`
 	PricingGroup   string        `yaml:"pricingGroup"`
 	StatsEnabled   bool          `yaml:"statsEnabled"`
