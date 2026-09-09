@@ -4,6 +4,16 @@ This repository mixes a Go runtime agent with supporting deployment automation a
 
 Use this page to standardize deployment prerequisites, supported topologies, operational checks, and rollback notes.
 
+## Centralized delivery
+
+The repository workflow builds and publishes immutable release artifacts only.
+Environment deployment is owned by `platform-ops-toolkit`: its single
+`deploy_tag` is used for the Accounts/Portal release and for the
+`ai-workspace-xstream/xconnect-edge-agent` source checkout. The toolkit obtains
+`INTERNAL_SERVICE_TOKEN` and the deployment SSH key through its OIDC-to-Vault
+flow; this repository does not require GitHub Actions repository secrets for
+deployment.
+
 ## Current code-aligned notes
 
 - Documentation target: `xconnect-edge-agent`
