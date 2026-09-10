@@ -15,7 +15,7 @@
 
 ## 📡 项目定位
 
-**XConnect Edge Agent** 是部署在 XConnect 代理节点上的边缘控制代理，负责把节点运行时连接到 [accounts 控制面](https://github.com/ai-workspace-xstream/accounts)：
+**XConnect Edge Agent** 是部署在 XConnect 代理节点上的边缘控制代理，负责把节点运行时连接到 [accounts 控制面](https://github.com/ai-workspace-services/accounts)：
 
 - 🔐 使用节点凭据与 `accounts` 完成认证通信。
 - 🔄 同步用户/节点配置，并在本机生成和更新 Xray 配置。
@@ -92,6 +92,189 @@ curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-
 | **1. 极简一键自建** | `curl ... \| bash -s -- --node <your-domain> --standalone` | 个人开发者、小白用户，单机独立加速 |
 | **2. 托管云端同步** | `AUTH_URL=<url> INTERNAL_SERVICE_TOKEN=<token> curl ... \| bash -s -- --node <your-domain>` | 与 [console.svc.plus](https://console.svc.plus/products/xconnect) 联动，自动同步多租户配置 |
 | **3. 全栈开源私有化** | 配合 [portal](https://github.com/ai-workspace-xstream/portal) 与 [postgresql.svc.plus](https://github.com/ai-workspace-xstream/postgresql.svc.plus) 自建完整平台 | 企业 IT、团队协作与极客全栈 |
+
+---
+
+## 🔗 与 accounts 服务对接部署
+
+### 1. 对接关系
+
+`accounts` 是控制面，`xconnect-edge-agent` 是节点侧运行时。Agent 不直接访问
+accounts 数据库，也不负责创建账号；它只通过 HTTPS 调用 accounts 的 Agent API：
+
+| Agent 请求 | 用途 | 成功响应 |
+| :--- | :--- | :--- |
+| `GET /api/agent-server/v1/users` | 拉取当前允许接入 Xray 的用户及 UUID | `200`，返回 `clients`、`total` |
+| `GET /api/agent-server/v1/users/events` | 监听用户配置版本变化，触发即时同步 | SSE 长连接 |
+| `POST /api/agent-server/v1/status` | 上报心跳、健康状态、同步版本和 Xray 状态 | `204` |
+| `GET /healthz` | 检查 accounts 服务是否可访问 | `200` |
+
+每次 Agent API 请求都会携带以下请求头：
+
+```text
+Authorization: Bearer <INTERNAL_SERVICE_TOKEN>
+X-Service-Token: <INTERNAL_SERVICE_TOKEN>
+X-Agent-ID: <唯一节点 ID>
+```
+
+其中 `X-Agent-ID` 通常使用节点域名，例如 `hk-xhttp.example.com`。同一个 token
+可以供多个节点使用，但每个节点的 `agent.id` 必须唯一且保持稳定，这样 accounts
+才能分别记录节点状态。
+
+### 2. 先部署 accounts 控制面
+
+在 accounts 服务侧准备以下配置：
+
+1. 使用 `server-agent` 运行模式，确保对外暴露 `/api/agent-server/v1/*`。
+2. 为服务配置 HTTPS 公网地址，例如 `https://accounts.example.com`；`AUTH_URL`
+   只填写域名根地址，不要把 `/api/agent-server/v1` 拼进去。
+3. 在 accounts 的运行时密钥管理中设置 `INTERNAL_SERVICE_TOKEN`。该值不能提交到
+   Git，也不要写入公开文档。
+4. accounts 使用 PostgreSQL 持久化用户、节点和订阅状态；Agent 节点只需要能够
+   访问 accounts 的 HTTPS 端口，不需要访问 accounts 数据库。
+
+accounts 仓库提供 VPS、Docker 和 Cloud Run 三种部署路径。以 Docker 或 Cloud Run
+为例，先完成 accounts 部署并记下服务 URL；以 VPS 方式部署时，Caddy 通常监听
+`80/443` 并反向代理到 accounts 的 `:8080`：
+
+```bash
+# accounts 仓库
+curl -fsSL "https://raw.githubusercontent.com/ai-workspace-services/accounts/main/scripts/setup.sh?$(date +%s)" \\
+  | bash -s -- accounts.example.com --mode docker --deploy
+```
+
+如果 accounts 侧显式配置 Agent 凭据，可在其配置中使用与 Agent 相同的 token：
+
+```yaml
+agents:
+  credentials:
+    - id: "edge-node-hk-xhttp"
+      name: "Hong Kong XHTTP node"
+      token: "<与 INTERNAL_SERVICE_TOKEN 相同的值>"
+      groups:
+        - "default"
+```
+
+注意：accounts 启动时如果 `agents.credentials` 非空，会优先使用这组凭据；此时
+`INTERNAL_SERVICE_TOKEN` 只作为其他内部服务的密钥，不会自动替换上面的
+`token`。如果希望使用共享 token 兜底，请不要配置 `agents.credentials`，仅在
+accounts 运行时注入 `INTERNAL_SERVICE_TOKEN`；生产环境仍建议通过 Vault/Secret
+Manager 注入，不要把明文 token 提交到配置文件。
+
+多节点场景建议使用一个专用的 Agent token，并通过每个节点的 `X-Agent-ID` 区分节点；
+不要为每台机器复制数据库凭据或授予数据库访问权限。
+
+### 3. 一键部署并接入 Agent 节点（推荐）
+
+确认 accounts 已可访问后，在每台代理节点上执行。下面的 token 只通过当前 Shell
+环境传入，不要把真实 token 固定写进脚本或仓库：
+
+```bash
+export AUTH_URL="https://accounts.example.com"
+export INTERNAL_SERVICE_TOKEN="<accounts 的 Agent token>"
+
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
+  bash -s -- --node hk-xhttp.example.com
+```
+
+脚本会完成以下工作：
+
+- 安装或更新 Xray、Caddy 和 `xconnect-edge-agent`；
+- 生成 `/etc/agent/account-agent.yaml`，把 `agent.id` 写成 `--node` 的值；
+- 将 `AUTH_URL` 写入 `agent.controllerUrl`，将 `INTERNAL_SERVICE_TOKEN` 写入
+  `agent.apiToken`；
+- 创建并启用 `xconnect-edge-agent.service`，同时配置 XHTTP/TCP 两套 Xray 同步目标。
+
+也可以显式传参：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
+  bash -s -- --node hk-xhttp.example.com \\
+    --auth-url https://accounts.example.com \\
+    --internal-service-token "${INTERNAL_SERVICE_TOKEN}"
+```
+
+### 4. 已安装节点修改 accounts 地址或 token
+
+重新执行上面的安装命令即可更新 Agent 配置；如果只执行 `--upgrade-only`，配置文件
+不会被覆盖，适合只升级二进制的场景。也可以直接编辑配置文件：
+
+```yaml
+mode: "agent"
+
+agent:
+  id: "hk-xhttp.example.com"
+  controllerUrl: "https://accounts.example.com"
+  apiToken: "<accounts 的 Agent token>"
+  httpTimeout: 15s
+  statusInterval: 1m
+  syncInterval: 10m
+  tls:
+    insecureSkipVerify: false
+```
+
+修改后重启并检查服务：
+
+```bash
+sudo systemctl restart xconnect-edge-agent
+sudo systemctl is-active xconnect-edge-agent
+sudo journalctl -u xconnect-edge-agent -n 100 --no-pager
+```
+
+### 5. 使用 Ansible 部署多台节点
+
+仓库内的 Ansible 方案要求目标机器已经运行过 `scripts/setup-proxy.sh`，先完成
+Xray、Caddy 和证书初始化，再由 Ansible 下发 Agent 二进制、配置和 systemd 服务。
+
+```bash
+cd deploy/ansible
+export INTERNAL_SERVICE_TOKEN="<accounts 的 Agent token>"
+
+# 生产 inventory；仅部署 Agent，不执行 Cloudflare DNS 更新
+./deploy.sh --prod --deploy-only
+```
+
+自定义环境时，编辑 `inventory.ini` 和 `vars/xconnect_edge_agent.yml`，然后执行：
+
+```bash
+./deploy.sh --inventory inventory.ini --deploy-only
+```
+
+每台机器应在变量文件中设置不同的 `agent_id`；`agent_controller_url` 设置为同一个
+accounts HTTPS 地址，token 统一从 `INTERNAL_SERVICE_TOKEN` 注入。
+
+### 6. 对接完成后的验证
+
+先验证 accounts 本身，再验证 Agent API 和节点服务：
+
+```bash
+export AUTH_URL="https://accounts.example.com"
+export INTERNAL_SERVICE_TOKEN="<accounts 的 Agent token>"
+export AGENT_ID="hk-xhttp.example.com"
+
+# accounts 健康检查：预期 HTTP 200
+curl -fsS "${AUTH_URL}/healthz"
+
+# 拉取用户配置：预期 HTTP 200，并返回 clients/total
+curl -fsS \\
+  -H "Authorization: Bearer ${INTERNAL_SERVICE_TOKEN}" \\
+  -H "X-Service-Token: ${INTERNAL_SERVICE_TOKEN}" \\
+  -H "X-Agent-ID: ${AGENT_ID}" \\
+  "${AUTH_URL}/api/agent-server/v1/users"
+
+# 节点服务：预期 active
+systemctl is-active xconnect-edge-agent
+```
+
+### 7. 常见故障
+
+| 现象 | 常见原因 | 处理方式 |
+| :--- | :--- | :--- |
+| `401 Unauthorized` | Agent 与 accounts 的 token 不一致，或缺少 `Bearer` 前缀 | 对比 accounts 运行时的 `INTERNAL_SERVICE_TOKEN` 与 `/etc/agent/account-agent.yaml` 的 `apiToken` |
+| `404 Not Found` | `AUTH_URL` 指向了错误服务，或 accounts 版本未包含 Agent API | 直接访问 `${AUTH_URL}/healthz` 和 `${AUTH_URL}/api/agent-server/v1/users`，确认路径未重复拼接 |
+| `connection refused` / TLS 错误 | DNS、80/443、防火墙或 HTTPS 证书问题 | 从 Agent 节点执行 `curl -v ${AUTH_URL}/healthz`，先修复 accounts 公网访问 |
+| 返回 `200` 但 `clients` 为空 | 用户未激活/未完成邮箱验证、被暂停，或没有可用 proxy UUID | 在 accounts 控制台检查用户状态；这不代表 Agent 鉴权失败 |
+| `xconnect-edge-agent` 未启动 | 安装时没有同时提供 `AUTH_URL` 和 token | 补齐配置后执行 `sudo systemctl restart xconnect-edge-agent` |
 
 ---
 
