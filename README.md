@@ -171,9 +171,10 @@ Manager 注入，不要把明文 token 提交到配置文件。
 
 ```bash
 export AUTH_URL="https://accounts.example.com"
+export BILLING_SERVICE_URL="https://billing.example.com"
 export INTERNAL_SERVICE_TOKEN="<accounts 的 Agent token>"
 
-curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \
   bash -s -- --node hk-xhttp.example.com
 ```
 
@@ -181,26 +182,32 @@ curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-
 
 - 安装或更新 Xray、Caddy 和 `xconnect-edge-agent`；
 - 生成 `/etc/agent/account-agent.yaml`，把 `agent.id` 写成 `--node` 的值；
-- 将 `AUTH_URL` 写入 `agent.controllerUrl`，将 `INTERNAL_SERVICE_TOKEN` 写入
-  `agent.apiToken`；
+- 将 `AUTH_URL` 写入 `agent.controllerUrl`，将 `INTERNAL_SERVICE_TOKEN` 写入 `agent.apiToken`；
+- 写入 `billing` 调度配置（`baseURL: "${BILLING_SERVICE_URL}"`）；
 - 创建并启用 `xconnect-edge-agent.service`，同时配置 XHTTP/TCP 两套 Xray 同步目标。
 
 也可以显式传参：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \\
-  bash -s -- --node hk-xhttp.example.com \\
-    --auth-url https://accounts.example.com \\
+curl -fsSL https://raw.githubusercontent.com/ai-workspace-xstream/xconnect-edge-agent/main/scripts/setup-proxy.sh | \
+  bash -s -- --node hk-xhttp.example.com \
+    --auth-url https://accounts.example.com \
+    --billing-service-url https://billing.example.com \
     --internal-service-token "${INTERNAL_SERVICE_TOKEN}"
 ```
 
-### 4. 已安装节点修改 accounts 地址或 token
+> **提示**：脚本兼容多种环境变量命名（如 `AUTH_URL`、`Accounts_AUTH_URL` 以及 `BILLING_SERVICE_URL`、`Billing-service_AUTH_URL`、`BILLING_BASE_URL` 等）。
+
+### 4. 已安装节点修改 accounts / billing 地址或 token
 
 重新执行上面的安装命令即可更新 Agent 配置；如果只执行 `--upgrade-only`，配置文件
-不会被覆盖，适合只升级二进制的场景。也可以直接编辑配置文件：
+不会被覆盖，适合只升级二进制的场景。也可以直接编辑配置文件 `/etc/agent/account-agent.yaml`：
 
 ```yaml
 mode: "agent"
+
+log:
+  level: info
 
 agent:
   id: "hk-xhttp.example.com"
@@ -211,6 +218,13 @@ agent:
   syncInterval: 10m
   tls:
     insecureSkipVerify: false
+
+billing:
+  enabled: true
+  baseURL: "https://billing.example.com"
+  httpTimeout: 15s
+  collectInterval: 1m
+  reconcileInterval: 5m
 ```
 
 修改后重启并检查服务：

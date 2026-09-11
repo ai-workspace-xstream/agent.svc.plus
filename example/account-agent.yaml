@@ -29,6 +29,13 @@ agent:
   tls:
     insecureSkipVerify: false
 
+billing:
+  enabled: true
+  baseURL: "https://billing.svc.plus"
+  httpTimeout: 15s
+  collectInterval: 1m
+  reconcileInterval: 5m
+
 xray:
   sync:
     enabled: true

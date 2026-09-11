@@ -18,7 +18,7 @@ LEGACY_AGENT_SERVICE_NAME="agent-svc-plus"
 CLOUDFLARE_ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-svc.plus}"
 CLOUDFLARE_API_BASE="https://api.cloudflare.com/client/v4"
 GITHUB_REPO="${GITHUB_REPO:-ai-workspace-xstream/xconnect-edge-agent}"
-AGENT_RELEASE_TAG="${AGENT_RELEASE_TAG:-v0.1.2}"
+AGENT_RELEASE_TAG="${AGENT_RELEASE_TAG:-latest}"
 AGENT_RELEASE_BASE_URL="https://github.com/${GITHUB_REPO}/releases"
 
 is_truthy() {
@@ -61,28 +61,103 @@ resolve_release_download_url() {
 install_prebuilt_runtime_bundle() {
     local goarch="$1"
     local asset_name="artifact-${goarch}.tar.gz"
-    local asset_url
     local tmp_dir
-
-    asset_url="$(resolve_release_download_url "${asset_name}")"
     tmp_dir="$(mktemp -d /tmp/agent-runtime.XXXXXX)"
 
+    local agent_bin=""
+    local caddy_bin=""
+
+    # 1. Try downloading bundle tarball
+    local bundle_downloaded=false
+    local bundle_url
+    bundle_url="$(resolve_release_download_url "${asset_name}")"
+
     echo "Downloading runtime bundle: ${asset_name}"
-    if ! curl -fL --retry 3 --connect-timeout 10 -o "${tmp_dir}/${asset_name}" "${asset_url}"; then
-        echo -e "${RED}Failed to download runtime bundle from GitHub Release.${NC}"
-        echo "Checked: ${asset_url}"
-        exit 1
+    if curl -fL --retry 3 --connect-timeout 10 -o "${tmp_dir}/${asset_name}" "${bundle_url}" 2>/dev/null; then
+        bundle_downloaded=true
+    else
+        # Try resolving hashed bundle asset (e.g. artifact-${goarch}-<commit>.tar.gz)
+        local release_api_url
+        if [ "${AGENT_RELEASE_TAG}" = "latest" ]; then
+            release_api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+        else
+            release_api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${AGENT_RELEASE_TAG}"
+        fi
+        local matched_bundle_url
+        matched_bundle_url="$(curl -fsSL --connect-timeout 5 "${release_api_url}" 2>/dev/null | \
+            grep -oE "https://[^\" ]+/download/[^\" ]+/artifact-${goarch}[^\" ]*\.tar\.gz" | head -n 1 || true)"
+        if [ -n "${matched_bundle_url}" ]; then
+            echo "Downloading hashed runtime bundle: ${matched_bundle_url}"
+            if curl -fL --retry 3 --connect-timeout 10 -o "${tmp_dir}/${asset_name}" "${matched_bundle_url}" 2>/dev/null; then
+                bundle_downloaded=true
+            fi
+        fi
     fi
 
-    tar -xzf "${tmp_dir}/${asset_name}" -C "${tmp_dir}"
+    if [ "$bundle_downloaded" = true ]; then
+        tar -xzf "${tmp_dir}/${asset_name}" -C "${tmp_dir}" || true
+    fi
 
-    if [ ! -f "${tmp_dir}/xconnect-edge-agent" ] || [ ! -f "${tmp_dir}/caddy" ]; then
+    # Find agent binary in extracted bundle
+    for candidate in \
+        "${tmp_dir}/xconnect-edge-agent" \
+        "${tmp_dir}/agent-svc-plus" \
+        "${tmp_dir}/agent-proxy" \
+        "$(find "${tmp_dir}" -maxdepth 2 -type f \( -name "xconnect-edge-agent" -o -name "agent-svc-plus" -o -name "agent-proxy" \) 2>/dev/null | head -n 1)"
+    do
+        if [ -n "$candidate" ] && [ -f "$candidate" ]; then
+            agent_bin="$candidate"
+            break
+        fi
+    done
+
+    # Find caddy binary in extracted bundle
+    for candidate in \
+        "${tmp_dir}/caddy" \
+        "$(find "${tmp_dir}" -maxdepth 2 -type f -name "caddy" 2>/dev/null | head -n 1)"
+    do
+        if [ -n "$candidate" ] && [ -f "$candidate" ]; then
+            caddy_bin="$candidate"
+            break
+        fi
+    done
+
+    # 2. Fallback: Download individual prebuilt binaries directly if not found in bundle
+    if [ -z "$agent_bin" ] || [ ! -f "$agent_bin" ]; then
+        echo -e "${YELLOW}Agent binary not found in bundle, attempting direct binary download...${NC}"
+        for bin_name in "xconnect-edge-agent-linux-${goarch}" "agent-svc-plus-linux-${goarch}"; do
+            local direct_url
+            direct_url="$(resolve_release_download_url "${bin_name}")"
+            if curl -fL --retry 3 --connect-timeout 10 -o "${tmp_dir}/xconnect-edge-agent" "${direct_url}" 2>/dev/null; then
+                chmod +x "${tmp_dir}/xconnect-edge-agent"
+                agent_bin="${tmp_dir}/xconnect-edge-agent"
+                echo -e "${GREEN}Downloaded ${bin_name} directly.${NC}"
+                break
+            fi
+        done
+    fi
+
+    if [ -z "$caddy_bin" ] || [ ! -f "$caddy_bin" ]; then
+        echo -e "${YELLOW}Caddy binary not found in bundle, attempting direct binary download...${NC}"
+        local caddy_url
+        caddy_url="$(resolve_release_download_url "caddy-linux-${goarch}")"
+        if curl -fL --retry 3 --connect-timeout 10 -o "${tmp_dir}/caddy" "${caddy_url}" 2>/dev/null; then
+            chmod +x "${tmp_dir}/caddy"
+            caddy_bin="${tmp_dir}/caddy"
+            echo -e "${GREEN}Downloaded caddy-linux-${goarch} directly.${NC}"
+        fi
+    fi
+
+    if [ -z "$agent_bin" ] || [ ! -f "$agent_bin" ] || [ -z "$caddy_bin" ] || [ ! -f "$caddy_bin" ]; then
         echo -e "${RED}Runtime bundle is missing required binaries (xconnect-edge-agent/caddy).${NC}"
         exit 1
     fi
 
-    install -m 755 "${tmp_dir}/xconnect-edge-agent" /usr/local/bin/xconnect-edge-agent
-    install -m 755 "${tmp_dir}/caddy" /usr/bin/caddy
+    echo -e "${GREEN}Installing binaries...${NC}"
+    install -m 755 "${agent_bin}" /usr/local/bin/xconnect-edge-agent
+    ln -sf /usr/local/bin/xconnect-edge-agent /usr/local/bin/agent-svc-plus
+    ln -sf /usr/local/bin/xconnect-edge-agent /usr/local/bin/agent-proxy
+    install -m 755 "${caddy_bin}" /usr/bin/caddy
     rm -rf "${tmp_dir}"
 }
 
@@ -95,7 +170,7 @@ fetch_repo_archive() {
         "https://github.com/${GITHUB_REPO}/archive/refs/heads/main.tar.gz" \
         -o "${tmp_dir}/repo.tar.gz"
     tar -xzf "${tmp_dir}/repo.tar.gz" -C "${tmp_dir}"
-    extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -type d -name 'xconnect-edge-agent-*' | head -n 1)"
+    extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -mindepth 1 -type d | head -n 1)"
 
     if [ -z "${extracted_dir}" ]; then
         echo -e "${RED}Failed to fetch repository archive for templates/config.${NC}"
@@ -349,8 +424,9 @@ EOF
 }
 
 DOMAIN=""
-AUTH_URL="${AUTH_URL:-}"
-INTERNAL_SERVICE_TOKEN="${INTERNAL_SERVICE_TOKEN:-}"
+AUTH_URL="${AUTH_URL:-${ACCOUNTS_AUTH_URL:-${Accounts_AUTH_URL:-${ACCOUNTS_URL:-}}}}"
+INTERNAL_SERVICE_TOKEN="${INTERNAL_SERVICE_TOKEN:-${NTERNAL_SERVICE_TOKEN:-}}"
+BILLING_URL="${BILLING_URL:-${BILLING_BASE_URL:-${BILLING_SERVICE_URL:-${BILLING_AUTH_URL:-${BILLING_SERVICE_AUTH_URL:-${Billing_service_AUTH_URL:-${billing_service_url:-${billing_service_auth_url:-}}}}}}}}"
 UPGRADE_ONLY=false
 PRINT_ARCH=false
 
@@ -364,11 +440,11 @@ while [ "$#" -gt 0 ]; do
             DOMAIN="${1#*=}"
             shift
             ;;
-        --auth-url)
+        --auth-url|--accounts-url|--accounts-auth-url)
             AUTH_URL="${2:-}"
             shift 2
             ;;
-        --auth-url=*)
+        --auth-url=*|--accounts-url=*|--accounts-auth-url=*)
             AUTH_URL="${1#*=}"
             shift
             ;;
@@ -378,6 +454,14 @@ while [ "$#" -gt 0 ]; do
             ;;
         --internal-service-token=*)
             INTERNAL_SERVICE_TOKEN="${1#*=}"
+            shift
+            ;;
+        --billing-url|--billing-service-url|--billing-base-url|--billing-auth-url|--billing-service-auth-url)
+            BILLING_URL="${2:-}"
+            shift 2
+            ;;
+        --billing-url=*|--billing-service-url=*|--billing-base-url=*|--billing-auth-url=*|--billing-service-auth-url=*)
+            BILLING_URL="${1#*=}"
             shift
             ;;
         --upgrade-only|--upgrade)
@@ -444,6 +528,9 @@ if [ "$STANDALONE_MODE" = true ]; then
 fi
 if [ -n "$AUTH_URL" ]; then
     echo -e "${GREEN}Using AUTH_URL: ${AUTH_URL}${NC}"
+fi
+if [ -n "$BILLING_URL" ]; then
+    echo -e "${GREEN}Using BILLING_URL: ${BILLING_URL}${NC}"
 fi
 if is_truthy "$OPEN_STUNNEL_5443"; then
     OPEN_STUNNEL_5443=true
@@ -589,9 +676,10 @@ print_standalone_links() {
 }
 
 disable_agent_service_if_present() {
-    for service_name in xconnect-edge-agent "$LEGACY_AGENT_SERVICE_NAME"; do
-        if systemctl list-unit-files "${service_name}.service" >/dev/null 2>&1; then
-            systemctl disable --now "$service_name" >/dev/null 2>&1 || true
+    for service_name in xconnect-edge-agent "$LEGACY_AGENT_SERVICE_NAME" agent-proxy; do
+        if systemctl list-unit-files "${service_name}.service" >/dev/null 2>&1 || systemctl is-active "${service_name}.service" >/dev/null 2>&1; then
+            systemctl stop "$service_name" >/dev/null 2>&1 || true
+            systemctl disable "$service_name" >/dev/null 2>&1 || true
         fi
     done
 }
@@ -682,12 +770,28 @@ if [ "$STANDALONE_MODE" != true ]; then
     if [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
         sed -i -E "s|^([[:space:]]*apiToken:[[:space:]]*).*$|\\1\"${INTERNAL_SERVICE_TOKEN}\"|g" /etc/agent/account-agent.yaml
     fi
+    if [ -n "$BILLING_URL" ]; then
+        if grep -q "billing:" /etc/agent/account-agent.yaml; then
+            sed -i -E "s|^([[:space:]]*baseURL:[[:space:]]*).*$|\\1\"${BILLING_URL}\"|g" /etc/agent/account-agent.yaml
+            sed -i -E "s|^([[:space:]]*enabled:[[:space:]]*).*$|\\1true|g" /etc/agent/account-agent.yaml
+        else
+            cat >> /etc/agent/account-agent.yaml <<EOF
+
+billing:
+  enabled: true
+  baseURL: "${BILLING_URL}"
+  httpTimeout: 15s
+  collectInterval: 1m
+  reconcileInterval: 5m
+EOF
+        fi
+    fi
 fi
 
 # 6. Caddy Configuration
 echo -e "${GREEN}[6/7] Configuration Caddyfile...${NC}"
 
-# Check for existing Certbot certificates to reuse
+# Check for existing certificates to reuse
 LE_CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
 LE_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
 CADDY_CERT_DIR="/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${DOMAIN}"
@@ -696,20 +800,39 @@ XRAY_CERT="${CADDY_CERT_DIR}/${DOMAIN}.crt"
 XRAY_KEY="${CADDY_CERT_DIR}/${DOMAIN}.key"
 
 if [ -f "$LE_CERT" ] && [ -f "$LE_KEY" ]; then
-    echo "Found existing Certbot certificates. usage: Direct."
+    echo "Found existing Certbot certificates at $LE_CERT"
     TLS_CONFIG="tls $LE_CERT $LE_KEY"
     XRAY_CERT="$LE_CERT"
     XRAY_KEY="$LE_KEY"
-    
-    # Fix Permissions
-    echo "Adjusting permissions for /etc/letsencrypt to allow Xray access..."
-    chmod 755 /etc/letsencrypt
-    chmod 755 /etc/letsencrypt/live
-    chmod 755 /etc/letsencrypt/archive
-    chmod -R +r /etc/letsencrypt/archive/${DOMAIN}
-    chmod -R +r /etc/letsencrypt/live/${DOMAIN}
+    chmod 755 /etc/letsencrypt || true
+    chmod 755 /etc/letsencrypt/live || true
+    chmod 755 /etc/letsencrypt/archive || true
+    chmod -R +r /etc/letsencrypt/archive/${DOMAIN} || true
+    chmod -R +r /etc/letsencrypt/live/${DOMAIN} || true
+elif [ -f "/etc/caddy/tls/agent-proxy.crt" ] && [ -f "/etc/caddy/tls/agent-proxy.key" ]; then
+    echo "Found existing agent-proxy certificates at /etc/caddy/tls"
+    TLS_CONFIG="tls /etc/caddy/tls/agent-proxy.crt /etc/caddy/tls/agent-proxy.key"
+    XRAY_CERT="/etc/caddy/tls/agent-proxy.crt"
+    XRAY_KEY="/etc/caddy/tls/agent-proxy.key"
+    chmod 755 /etc/caddy/tls || true
+    chmod 644 /etc/caddy/tls/agent-proxy.crt || true
+    chmod 640 /etc/caddy/tls/agent-proxy.key || true
+    chown caddy:caddy /etc/caddy/tls/agent-proxy.key || true
+elif [ -f "/etc/xcontrol/tls/svc.plus/current/fullchain.pem" ] && [ -f "/etc/xcontrol/tls/svc.plus/current/key.pem" ]; then
+    echo "Found existing xcontrol TLS certificates at /etc/xcontrol/tls/svc.plus"
+    TLS_CONFIG="tls /etc/xcontrol/tls/svc.plus/current/fullchain.pem /etc/xcontrol/tls/svc.plus/current/key.pem"
+    XRAY_CERT="/etc/xcontrol/tls/svc.plus/current/fullchain.pem"
+    XRAY_KEY="/etc/xcontrol/tls/svc.plus/current/key.pem"
 else
-    echo "No existing Certbot certificates found at $LE_CERT. Xray TCP will use Caddy-managed cert path: $XRAY_CERT"
+    # Check if Caddy already obtained a cert in any directory
+    existing_caddy_cert="$(find /var/lib/caddy/.local/share/caddy/certificates -type f -name "${DOMAIN}.crt" 2>/dev/null | head -n 1)"
+    if [ -n "$existing_caddy_cert" ] && [ -f "${existing_caddy_cert%.crt}.key" ]; then
+        echo "Found existing Caddy-managed certificate at $existing_caddy_cert"
+        XRAY_CERT="$existing_caddy_cert"
+        XRAY_KEY="${existing_caddy_cert%.crt}.key"
+    else
+        echo "No existing certificates found at $LE_CERT. Xray TCP will use Caddy-managed cert path: $XRAY_CERT"
+    fi
 fi
 
 # Ensure Xray TCP template + config always match the chosen cert paths
@@ -728,12 +851,25 @@ echo "Updated Xray TCP template/config to use: ${XRAY_CERT}"
 cat > /etc/caddy/Caddyfile <<EOF
 ${DOMAIN} {
     ${TLS_CONFIG}
-    
-    @grpc {
-        path /split/*
+
+    handle_path /xray-exporter/xhttp/* {
+        reverse_proxy 127.0.0.1:8080
     }
 
-    handle @grpc {
+    handle_path /xray-exporter/tcp/* {
+        reverse_proxy 127.0.0.1:8081
+    }
+    
+    @xhttp {
+        path /split /split/*
+    }
+
+    @xhttp_root path /split
+    rewrite @xhttp_root /split/
+
+    handle @xhttp {
+        uri query -x_padding
+
         reverse_proxy unix//dev/shm/xray.sock {
              transport http {
                  versions h2c 2
@@ -884,10 +1020,20 @@ fi
 systemctl restart xray || true
 systemctl restart caddy || true
 
-if [ ! -f "$LE_CERT" ] || [ ! -f "$LE_KEY" ]; then
+if [ ! -f "$XRAY_CERT" ] || [ ! -f "$XRAY_KEY" ]; then
+    echo "Waiting for Caddy to obtain certificate for ${DOMAIN}..."
     for i in $(seq 1 30); do
-        if [ -f "$XRAY_CERT" ] && [ -f "$XRAY_KEY" ]; then
-            break
+        discovered_cert="$(find /var/lib/caddy/.local/share/caddy/certificates -type f -name "${DOMAIN}.crt" 2>/dev/null | head -n 1)"
+        if [ -n "$discovered_cert" ]; then
+            discovered_key="${discovered_cert%.crt}.key"
+            if [ -f "$discovered_key" ]; then
+                XRAY_CERT="$discovered_cert"
+                XRAY_KEY="$discovered_key"
+                sed -i -E "s|(\"certificateFile\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\\1${XRAY_CERT}\\2|g" /usr/local/etc/xray/tcp-config.json
+                sed -i -E "s|(\"keyFile\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\\1${XRAY_KEY}\\2|g" /usr/local/etc/xray/tcp-config.json
+                echo "Discovered Caddy certificate at ${XRAY_CERT}"
+                break
+            fi
         fi
         sleep 2
     done
@@ -898,6 +1044,13 @@ if [ "$STANDALONE_MODE" = true ]; then
     echo -e "${GREEN}Standalone mode: skipping xconnect-edge-agent service installation.${NC}"
 elif [ -n "$AUTH_URL" ] && [ -n "$INTERNAL_SERVICE_TOKEN" ]; then
     systemctl restart xconnect-edge-agent
+    sleep 2
+    if systemctl is-active --quiet xconnect-edge-agent; then
+        echo -e "${GREEN}xconnect-edge-agent service is active and registered.${NC}"
+    else
+        echo -e "${YELLOW}xconnect-edge-agent status: $(systemctl is-active xconnect-edge-agent)${NC}"
+        journalctl -u xconnect-edge-agent -n 25 --no-pager || true
+    fi
 else
     echo -e "${YELLOW}Skipping xconnect-edge-agent start: AUTH_URL or INTERNAL_SERVICE_TOKEN is missing.${NC}"
 fi
@@ -919,6 +1072,9 @@ else
         echo -e "  - apiToken: <provided>"
     else
         echo -e "  - apiToken: <not set>"
+    fi
+    if [ -n "$BILLING_URL" ]; then
+        echo -e "  - billing.baseURL: ${BILLING_URL}"
     fi
     if [ -z "$AUTH_URL" ] || [ -z "$INTERNAL_SERVICE_TOKEN" ]; then
         echo -e "Set AUTH_URL and INTERNAL_SERVICE_TOKEN then run: systemctl restart xconnect-edge-agent"
